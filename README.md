@@ -26,18 +26,20 @@ pnpm cratylus init        # writes a starter cratylus.config.json (or the file g
 Check a branch name. With no name it checks the current branch, and exits 1 if the name is invalid:
 
 ```sh
-$ pnpm cratylus branch feat/t2dv-74-cancel-endpoint
-valid: feat/t2dv-74-cancel-endpoint
+$ pnpm cratylus branch fix/107-refund-rounding
+valid: fix/107-refund-rounding
 $ pnpm cratylus branch feat/cancel-endpoint-15112026
 cratylus: invalid branch name "feat/cancel-endpoint-15112026"
-  - feat branches need a ticket id right after the slash, ...
+  - feat branches need a ticket id right after the slash, as feat/<ticket>-<description>, with a ticket matching /\d+/. A date suffix is not accepted for feat.
 ```
+
+These examples use the default `ticket` pattern, which is `\d+`. Set `ticket` in the config for ids such as `t2dv-74`.
 
 Print the name for a piece of work. The date is today:
 
 ```sh
-$ pnpm cratylus name --type feat --ticket T2DV-74 --title "Cancel endpoint"
-feat/t2dv-74-cancel-endpoint
+$ pnpm cratylus name --type fix --ticket 107 --title "Refund rounding"
+fix/107-refund-rounding
 $ pnpm cratylus name --type chore --title "Upgrade dependencies"
 chore/upgrade-dependencies-22112026
 ```
@@ -54,6 +56,7 @@ $ printf 'Closes #107\nCloses: 108 and 109\n' | pnpm cratylus refs
 Check that a pull request names a ticket. It exits 1 if it does not:
 
 ```sh
+$ printf 'Closes #107\n' > body.md
 $ pnpm cratylus pr --title "Round refunds" --body-file body.md
 ok: references 107
 $ pnpm cratylus pr --title "Tidy imports" --label no-ticket
@@ -129,7 +132,7 @@ Otherwise it fails with one message: add a `Closes <id>` line to the description
 | `ticketRequired` | `["feat", "fix", "refactor", "perf"]` | Types whose branch must carry a ticket id. Every entry must be in `types`. |
 | `noTicketLabel` | `"no-ticket"` | Pull request label that clears the ticket requirement. |
 
-The reference scanner is an approximation of Markdown, not a parser. It does not model code indented inside a list item or straight after a heading or a thematic break (both are read as text, so a `Closes` there links), or the comment forms `<!-->` and `<!--->`.
+The reference scanner is an approximation of Markdown, not a parser. It does not model code indented inside a list item or straight after a heading or a thematic break (both are read as text, so a `Closes` there links), or the comment forms `<!-->` and `<!--->`. An unclosed fence inside a blockquote runs to the end of the description, so `> ```\n> Closes 1\nCloses 2` finds nothing. A stray backtick on the line directly above a heading or a list item can hide a reference in that block when the block also contains a backtick.
 
 ## In a hook and in CI
 
