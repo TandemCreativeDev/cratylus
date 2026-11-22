@@ -39,6 +39,26 @@ describe("resolveConfig", () => {
     assert.throws(() => resolveConfig({ types: ["chore"] }), /ticketRequired has feat, fix, refactor, perf, which are not in types/);
   });
 
+  const badTickets = [
+    { why: "a pattern that matches the empty string", ticket: "\\d*", expect: /ticket must not match the empty string/ },
+    { why: "an alternative that matches the empty string", ticket: "t2dv-\\d+|\\d*", expect: /ticket must not match the empty string/ },
+    { why: "a named capture group", ticket: "(?<id>\\d+)", expect: /ticket must not contain a capture group; write \(\?:\.\.\.\)/ },
+    { why: "a numbered capture group", ticket: "(t2dv)-\\d+", expect: /ticket must not contain a capture group/ },
+    { why: "a backreference with its group", ticket: "([a-z])\\1-\\d+", expect: /ticket must not contain a capture group/ },
+    { why: "a leading anchor", ticket: "^\\d+", expect: /ticket must not start with \^ or end with \$/ },
+    { why: "a trailing anchor", ticket: "\\d+$", expect: /ticket must not start with \^ or end with \$/ },
+    { why: "both anchors", ticket: "^\\d+$", expect: /ticket must not start with \^ or end with \$/ },
+  ];
+  for (const { why, ticket, expect } of badTickets)
+    it(`rejects ${why}`, () => assert.throws(() => resolveConfig({ ticket }), expect));
+
+  it("accepts alternation, non-capturing groups and an escaped dollar", () => {
+    assert.equal(resolveConfig({ ticket: "t2dv-\\d+|\\d+" }).ticket, "t2dv-\\d+|\\d+");
+    assert.equal(resolveConfig({ ticket: "(?:t2dv-)?\\d+" }).ticket, "(?:t2dv-)?\\d+");
+    assert.equal(resolveConfig({ ticket: "\\$\\d+" }).ticket, "\\$\\d+");
+    assert.equal(resolveConfig({ ticket: "\\d+\\$" }).ticket, "\\d+\\$");
+  });
+
   const malformed = [
     { why: "a non-object", raw: [], expect: /must be a JSON object/ },
     { why: "a non-string ticket", raw: { ticket: 1 }, expect: /ticket must be a non-empty string/ },

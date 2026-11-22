@@ -44,11 +44,17 @@ export function resolveConfig(raw: unknown, file: string = CONFIG_FILE): Config 
   const { $schema: _schema, ...options } = raw;
   const config: Config = { ...DEFAULTS, ...(options as Partial<Config>) };
 
+  let ticket: RegExp;
   try {
-    new RegExp(config.ticket, "i");
+    ticket = new RegExp(config.ticket, "i");
   } catch (error) {
-    fail(`ticket is not a valid regular expression: ${(error as Error).message}`);
+    return fail(`ticket is not a valid regular expression: ${(error as Error).message}`);
   }
+  if (new RegExp(`${config.ticket}|`).exec("")!.length > 1)
+    fail("ticket must not contain a capture group; write (?:...) for a group that only groups");
+  if (ticket.test("")) fail("ticket must not match the empty string");
+  if (config.ticket.startsWith("^") || /(?<!\\)(?:\\\\)*\$$/.test(config.ticket))
+    fail("ticket must not start with ^ or end with $, since it is matched inside a longer name");
   if (config.types.length === 0) fail("types must not be empty");
   const badTypes = config.types.filter((type) => !TYPE_FORMAT.test(type));
   if (badTypes.length) fail(`types must be lower case words joined by hyphens, not ${badTypes.join(", ")}`);
