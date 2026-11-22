@@ -48,7 +48,7 @@ describe("checkPullRequest", () => {
   });
 
   it("checks the bot before the label and the label before the references", () => {
-    assert.equal(checkPullRequest({ ...pr, bot: true, labels: ["no-ticket"], body: "Closes #1" }, DEFAULTS).ok && "bot", "bot");
+    assert.deepEqual(checkPullRequest({ ...pr, bot: true, labels: ["no-ticket"], body: "Closes #1" }, DEFAULTS), { ok: true, reason: "bot" });
     assert.deepEqual(checkPullRequest({ ...pr, labels: ["no-ticket"], body: "Closes #1" }, DEFAULTS), { ok: true, reason: "label" });
   });
 });
@@ -67,6 +67,10 @@ describe("parsePullRequestEvent", () => {
     assert.equal(parsePullRequestEvent(event({ title: "T", user: { type: "Bot" } })).bot, true);
   });
 
+  it("treats a null user as not a bot", () => {
+    assert.equal(parsePullRequestEvent(event({ title: "T", user: null })).bot, false);
+  });
+
   it("accepts a null or missing body and missing labels", () => {
     assert.deepEqual(parsePullRequestEvent(event({ title: "T", body: null })), { title: "T", body: null, labels: [], bot: false });
     assert.equal(parsePullRequestEvent(event({ title: "T" })).body, null);
@@ -80,7 +84,7 @@ describe("parsePullRequestEvent", () => {
     { why: "a numeric body", payload: event({ title: "T", body: 3 }), expect: /body must be a string or null/ },
     { why: "labels that are not an array", payload: event({ title: "T", labels: "bug" }), expect: /labels must be an array/ },
     { why: "a label without a name", payload: event({ title: "T", labels: [{}] }), expect: /labels\[\]\.name/ },
-    { why: "a user that is not an object", payload: event({ title: "T", user: "me" }), expect: /user must be an object/ },
+    { why: "a user that is not an object", payload: event({ title: "T", user: "me" }), expect: /user must be an object or null/ },
   ];
   for (const { why, payload, expect } of rejected) it(`rejects ${why}`, () => assert.throws(() => parsePullRequestEvent(payload), expect));
 });
