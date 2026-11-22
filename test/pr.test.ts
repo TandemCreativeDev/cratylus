@@ -71,6 +71,10 @@ describe("parsePullRequestEvent", () => {
     assert.equal(parsePullRequestEvent(event({ title: "T", user: null })).bot, false);
   });
 
+  it("treats other user types as not a bot", () => {
+    for (const type of ["User", "Organization"]) assert.equal(parsePullRequestEvent(event({ title: "T", user: { type } })).bot, false);
+  });
+
   it("accepts a null or missing body and missing labels", () => {
     assert.deepEqual(parsePullRequestEvent(event({ title: "T", body: null })), { title: "T", body: null, labels: [], bot: false });
     assert.equal(parsePullRequestEvent(event({ title: "T" })).body, null);
