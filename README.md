@@ -20,7 +20,7 @@ It needs Node 20 or later and has no runtime dependencies.
 ## Use
 
 ```sh
-pnpm cratylus init        # writes a starter cratylus.config.json
+pnpm cratylus init        # writes a starter cratylus.config.json (or the file given with -c)
 ```
 
 Check a branch name. With no name it checks the current branch, and exits 1 if the name is invalid:
@@ -60,14 +60,14 @@ $ pnpm cratylus pr --title "Tidy imports" --label no-ticket
 ok: labelled no-ticket, no ticket needed
 ```
 
-With no `--title`, `--body-file` or `--event`, `pr` reads the GitHub event payload at `$GITHUB_EVENT_PATH`. `--event <file>` names a payload explicitly. `--title`, `--body-file`, `--label` and `--bot` then replace or add to what the payload says.
+With no `--title`, `--body-file` or `--event`, `pr` reads the GitHub event payload at `$GITHUB_EVENT_PATH`. `--event <file>` names a payload explicitly. With `--event`, `--title` and `--body-file` replace what the payload says, and `--label` and `--bot` add to it. `--title`, `--body-file`, `--label` or `--bot` on their own, with no `--event`, decide without reading a payload, so `pr --label no-ticket` and `pr --bot` are enough by themselves.
 
 ### Options
 
 | Flag | Meaning |
 | --- | --- |
 | `-c, --config <file>` | Config file. Defaults to `cratylus.config.json` if present. |
-| `--json` | Print the result as one JSON object and nothing else on stdout. A failed check still exits 1. |
+| `--json` | Print the result as one JSON object and nothing else on stdout. A failed check still exits 1. An error that is not a check result prints `{ "error": "<message>" }` on stdout, with nothing on stderr and exit code 1. |
 | `--type <type>` | `name`: the branch type. |
 | `--ticket <id>` | `name`: the ticket id. Left out for work with no ticket. |
 | `--title <text>` | `name`: the title to make the description from. `pr`: the pull request title. |
@@ -76,7 +76,7 @@ With no `--title`, `--body-file` or `--event`, `pr` reads the GitHub event paylo
 | `--bot` | `pr`: the author is a bot. |
 | `--event <file>` | `pr`: a GitHub event payload. |
 
-Errors print as `cratylus: <message>` and exit 1.
+Errors print as `cratylus: <message>` on stderr and exit 1. An unexpected extra argument is an error.
 
 ## The convention
 
@@ -94,15 +94,17 @@ A branch name takes one of two forms, all in lower case:
 | Description | One or more runs of `a-z` and `0-9` joined by single hyphens. |
 | Date | Only when there is no ticket id. The day the branch is cut, as `DDMMYYYY`, and a real calendar date. |
 
+A name that fits both forms, such as `chore/2024-update-15112026` when `ticket` is `\d+`, is read as having a ticket: the ticket form wins, and the ticket is `2024`. So `name` refuses to build a dated name whose title starts with something that reads as a ticket id. Pass it as `--ticket`, or reword the title.
+
 When `name` builds a branch name, it turns the title into a description by lower-casing it, stripping accents, turning every run of other characters into one hyphen and keeping the first five words.
 
 A pull request links to a ticket only through an explicit `Closes <id>` in its title or description:
 
 | Rule | Detail |
 | --- | --- |
-| Keyword | `closes`, in any case, as a whole word. `fixes`, `resolves`, a bare id and an id in a branch name are not references. |
+| Keyword | `closes`, in any case, as a whole word that does not follow a word character or a hyphen, so `un-closes 107` is not a reference. `fixes`, `resolves`, a bare id and an id in a branch name are not references. |
 | Ids | After an optional colon, one or more ids separated by commas or `and`. Each may start with `#`. Each must match `ticket` in full and not run on into more word characters, so `Closes 107abc` is not a reference. |
-| Ignored | Anything inside a fenced code block, an indented code block, an inline code span or an HTML comment. Documentation that describes the syntax links nothing. |
+| Ignored | Anything inside a fenced code block, an indented code block, an inline code span or an HTML comment. Documentation that describes the syntax links nothing. The text is scanned once from left to right, and whichever construct opens first wins, so a `<!--` inside a code span or a fence inside a comment does not hide what follows. An unclosed `<!--` hides the rest of the text only when it starts a line; in the middle of a line it is plain text. A paragraph indented under a list item is list content, not code. |
 | Result | Ids in the order found, without the `#`, de-duplicated without regard to case, each in the casing it was first written. |
 
 The pull request check passes in this order:
@@ -121,7 +123,7 @@ Otherwise it fails with one message: add a `Closes <id>` line to the description
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `ticket` | `"\\d+"` | Regular expression source for one ticket id, such as `t2dv-\\d+`. Matched without regard to case. A pattern that does not compile is rejected. |
+| `ticket` | `"\\d+"` | Regular expression source for one ticket id, such as `t2dv-\\d+`. Matched without regard to case, inside a longer expression. A pattern is rejected if it does not compile, can match the empty string, has a capture group (write `(?:...)` instead) or starts with `^` or ends with `$`. Alternation such as `t2dv-\\d+\|\\d+` is fine. |
 | `types` | `["feat", "fix", "refactor", "perf", "docs", "test", "chore", "build", "ci"]` | Allowed branch types. |
 | `ticketRequired` | `["feat", "fix", "refactor", "perf"]` | Types whose branch must carry a ticket id. Every entry must be in `types`. |
 | `noTicketLabel` | `"no-ticket"` | Pull request label that clears the ticket requirement. |
