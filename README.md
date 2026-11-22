@@ -132,7 +132,7 @@ Otherwise it fails with one message: add a `Closes <id>` line to the description
 | `ticketRequired` | `["feat", "fix", "refactor", "perf"]` | Types whose branch must carry a ticket id. Every entry must be in `types`. |
 | `noTicketLabel` | `"no-ticket"` | Pull request label that clears the ticket requirement. |
 
-The reference scanner is an approximation of Markdown, not a parser. It does not model code indented inside a list item or straight after a heading or a thematic break (both are read as text, so a `Closes` there links), or the comment forms `<!-->` and `<!--->`. An unclosed fence inside a blockquote runs to the end of the description, so `> ```\n> Closes 1\nCloses 2` finds nothing. A stray backtick on the line directly above a heading or a list item can hide a reference in that block when the block also contains a backtick.
+The reference scanner is an approximation of Markdown, not a parser. It does not model code indented inside a list item or straight after a heading or a thematic break (both are read as text, so a `Closes` there links), or the comment forms `<!-->` and `<!--->`. An unclosed fence inside a blockquote or a list item runs to the end of the description, so `> ```\n> Closes 1\nCloses 2` and `- ```\nCloses 1` find nothing. A fence behind `- > ` is not recognised. A stray backtick on the line directly above a heading or a list item can hide a reference in that block when the block also contains a backtick.
 
 ## In a hook and in CI
 
