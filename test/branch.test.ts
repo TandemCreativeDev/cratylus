@@ -111,6 +111,29 @@ describe("validateBranch: a lettered ticket pattern and the dated form", () => {
   });
 });
 
+describe("validateBranch: a bad description before a bad date", () => {
+  for (const name of ["chore/12--31022026", "chore/12-foo_bar-31022026"])
+    it(name, () => {
+      const result = validateBranch(name, DEFAULTS);
+      assert.equal(result.valid, false);
+      if (!result.valid) {
+        assert.equal(result.reasons.length, 1);
+        assert.match(result.reasons[0], /^Write the description as words/);
+      }
+    });
+
+  it("still blames the date when the description is fine", () => {
+    const result = validateBranch("chore/tidy-31022026", DEFAULTS);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons[0], /not a real calendar date/);
+  });
+
+  it("asks for a description after a one-character ticket", () => {
+    const result = validateBranch("feat/7", DEFAULTS);
+    assert.deepEqual(result, { valid: false, reasons: ["Add a short description after the ticket id, as feat/7-<description>."] });
+  });
+});
+
 describe("validateBranch: details", () => {
   it("explains a bad description in a dated name with one reason", () => {
     assert.deepEqual(validateBranch("chore/tidy--up-15112026", DEFAULTS), {

@@ -61,7 +61,7 @@ export function validateBranch(name: string, config: Config): BranchResult {
     if (reasons.length === 0) return { valid: true, parts: { type, ticket: ticketForm.ticket, description: ticketForm.description } };
   } else if (!required && dateForm && isRealDate(dateForm.date)) {
     if (reasons.length === 0) return { valid: true, parts: { type, description: dateForm.description, date: dateForm.date } };
-  } else if (!required && dated && !isRealDate(dated[2])) {
+  } else if (!required && dated && !isRealDate(dated[2]) && (ticketLength === 0 || WORDS_ONLY.test(dated[1]))) {
     reasons.push(`"${dated[2]}" is not a real calendar date. Write the date as DDMMYYYY.`);
   } else if (ticketLength > 0) {
     if (rest.slice(ticketLength + 1) === "") reasons.push(`Add a short description after the ticket id, as ${type}/${ticketStart![0]}-<description>.`);
