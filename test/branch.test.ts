@@ -122,6 +122,16 @@ describe("validateBranch: a bad description before a bad date", () => {
       }
     });
 
+  it("reports both the date and the description when neither is right", () => {
+    const result = validateBranch("chore/foo_bar-31022026", DEFAULTS);
+    assert.equal(result.valid, false);
+    if (!result.valid) {
+      assert.equal(result.reasons.length, 2);
+      assert.match(result.reasons[0], /"31022026" is not a real calendar date/);
+      assert.match(result.reasons[1], /^Write the description as words/);
+    }
+  });
+
   it("still blames the date when the description is fine", () => {
     const result = validateBranch("chore/tidy-31022026", DEFAULTS);
     assert.equal(result.valid, false);
