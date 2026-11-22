@@ -1,9 +1,11 @@
 import type { Config } from "./config.ts";
 
-const FENCE_OPEN = /^[ \t>]*(?:(`{3,})[^`]*$|(~{3,}))/;
+const LIST_PREFIX = String.raw`(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*`;
+const FENCE_OPEN = new RegExp(String.raw`^(?<prefix>[ \t>]*${LIST_PREFIX})(?:(?<tick>\x60{3,})[^\x60]*$|(?<tilde>~{3,}))`);
+const LIST_ITEM_IN_PREFIX = /(?:[-*+]|\d{1,9}[.)])[ \t]/;
 const LIST_MARKER = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 const INDENTED = /^(?: {4}|\t)/;
-const PARAGRAPH_END = /[ \t]*(?:\n|$)|[ \t>]*(?:`{3,}[^`\n]*(?=\n|$)|~{3,})/y;
+const PARAGRAPH_END = new RegExp(String.raw`[ \t]*(?:\n|$)|[ \t>]*${LIST_PREFIX}(?:\x60{3,}[^\x60\n]*(?=\n|$)|~{3,})`, "y");
 const MASK = "\0";
 
 function lineEnd(text: string, from: number): number {
@@ -11,11 +13,27 @@ function lineEnd(text: string, from: number): number {
   return end === -1 ? text.length : end;
 }
 
-function closingFenceEnd(text: string, from: number, fence: string): number {
+function columns(indent: string): number {
+  return indent.replace(/\t/g, "    ").length;
+}
+
+/** A closing fence has the opener's prefix, or no list marker and at most three more columns of indent. */
+function closesFence(line: string, fence: string, prefix: string): boolean {
+  let rest: string;
+  if (line.startsWith(prefix) && !/^[ \t>]/.test(line.slice(prefix.length))) rest = line.slice(prefix.length);
+  else {
+    const indent = /^[ \t>]*/.exec(line)![0];
+    if (columns(indent) - columns(prefix) > 3) return false;
+    rest = line.slice(indent.length);
+  }
+  rest = rest.trim();
+  return rest.length >= fence.length && rest === fence[0].repeat(rest.length);
+}
+
+function closingFenceEnd(text: string, from: number, fence: string, prefix: string): number {
   for (let start = from; start < text.length; start = lineEnd(text, start) + 1) {
     const end = lineEnd(text, start);
-    const line = text.slice(start, end).replace(/^[ \t>]+/, "").trim();
-    if (line.length >= fence.length && line === fence[0].repeat(line.length)) return end;
+    if (closesFence(text.slice(start, end), fence, prefix)) return end;
   }
   return text.length;
 }
@@ -71,9 +89,11 @@ function maskCode(source: string): string {
       }
       const fenceOpen = FENCE_OPEN.exec(line);
       if (fenceOpen) {
+        const { prefix, tick, tilde } = fenceOpen.groups!;
         out.push(MASK);
-        i = closingFenceEnd(text, end + 1, fenceOpen[1] ?? fenceOpen[2]);
+        i = closingFenceEnd(text, end + 1, tick ?? tilde, prefix);
         canStartCode = true;
+        if (LIST_ITEM_IN_PREFIX.test(prefix)) listOpen = true;
         continue;
       }
       if (LIST_MARKER.test(line)) listOpen = true;
