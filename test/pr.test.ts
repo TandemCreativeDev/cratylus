@@ -20,6 +20,11 @@ describe("checkPullRequest", () => {
     assert.deepEqual(checkPullRequest({ ...pr, labels: ["No-Ticket"] }, DEFAULTS), { ok: true, reason: "label" });
   });
 
+  it("matches a mixed-case configured label without regard to case", () => {
+    const config = resolveConfig({ noTicketLabel: "No-Ticket" });
+    assert.deepEqual(checkPullRequest({ ...pr, labels: ["no-ticket"] }, config), { ok: true, reason: "label" });
+  });
+
   it("uses the configured label", () => {
     const config = resolveConfig({ noTicketLabel: "chore-only" });
     assert.equal(checkPullRequest({ ...pr, labels: ["no-ticket"] }, config).ok, false);

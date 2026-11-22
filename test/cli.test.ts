@@ -121,6 +121,13 @@ describe("init", () => {
     assert.match(second.stderr, /^cratylus: cratylus\.config\.json already exists/);
   });
 
+  it("prints one JSON object with --json", () => {
+    const dir = fs.mkdtempSync(path.join(scratch, "init-"));
+    const { status, stdout } = cratylus(["init", "--json"], { cwd: dir });
+    assert.equal(status, 0);
+    assert.deepEqual(JSON.parse(stdout), { wrote: "cratylus.config.json" });
+  });
+
   it("picks up the config it wrote", () => {
     const dir = fs.mkdtempSync(path.join(scratch, "init-"));
     cratylus(["init"], { cwd: dir });
