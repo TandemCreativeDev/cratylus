@@ -1,9 +1,9 @@
 import type { Config } from "./config.ts";
 
-const FENCE_OPEN = /^\s*(?:(`{3,})[^`]*$|(~{3,}))/;
+const FENCE_OPEN = /^[ \t>]*(?:(`{3,})[^`]*$|(~{3,}))/;
 const LIST_MARKER = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 const INDENTED = /^(?: {4}|\t)/;
-const BLANK_LINE = /[ \t]*(?:\n|$)/y;
+const PARAGRAPH_END = /[ \t]*(?:\n|$)|[ \t>]*(?:`{3,}[^`\n]*(?=\n|$)|~{3,})/y;
 const MASK = "\0";
 
 function lineEnd(text: string, from: number): number {
@@ -14,19 +14,19 @@ function lineEnd(text: string, from: number): number {
 function closingFenceEnd(text: string, from: number, fence: string): number {
   for (let start = from; start < text.length; start = lineEnd(text, start) + 1) {
     const end = lineEnd(text, start);
-    const line = text.slice(start, end).trim();
+    const line = text.slice(start, end).replace(/^[ \t>]+/, "").trim();
     if (line.length >= fence.length && line === fence[0].repeat(line.length)) return end;
   }
   return text.length;
 }
 
-/** The index after a run of exactly `length` backticks, or -1 if the paragraph ends first. */
+/** The index after a run of exactly `length` backticks, or -1 if a blank line or a fence comes first. */
 function closingTicksEnd(text: string, from: number, length: number): number {
   let i = from;
   while (i < text.length) {
     if (text[i] === "\n") {
-      BLANK_LINE.lastIndex = i + 1;
-      if (BLANK_LINE.test(text)) return -1;
+      PARAGRAPH_END.lastIndex = i + 1;
+      if (PARAGRAPH_END.test(text)) return -1;
       i++;
     } else if (text[i] === "`") {
       let end = i;
@@ -42,7 +42,8 @@ function closingTicksEnd(text: string, from: number, length: number): number {
  * Replaces fenced blocks, indented blocks, inline code spans and HTML comments with a placeholder.
  * It scans once from left to right, so whichever construct opens first wins.
  */
-function maskCode(text: string): string {
+function maskCode(source: string): string {
+  const text = source.replace(/\r\n?/g, "\n");
   const out: string[] = [];
   let i = 0;
   let atLineStart = true;
@@ -124,6 +125,7 @@ export function extractRefs(texts: string[], config: Config): string[] {
     for (const match of maskCode(text).matchAll(closes)) {
       for (const ref of match.groups!.list.matchAll(item)) {
         const written = ref.groups!.id;
+        if (written === "") continue;
         if (!found.has(written.toLowerCase())) found.set(written.toLowerCase(), written);
       }
     }
