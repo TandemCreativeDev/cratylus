@@ -42,7 +42,7 @@ describe("extractRefs: not references", () => {
     { why: "id in a tab-indented block", text: "Example:\n\n\tCloses #107\n", config: DEFAULTS },
     { why: "id in an HTML comment", text: "<!-- Closes #107 -->", config: DEFAULTS },
     { why: "id in a multi-line HTML comment", text: "<!--\nAdd a line such as\nCloses #107\n-->", config: DEFAULTS },
-    { why: "id in an unclosed HTML comment", text: "<!-- Closes #107", config: DEFAULTS },
+    { why: "id in an unclosed HTML comment that starts a line", text: "<!-- Closes #107", config: DEFAULTS },
     { why: "empty text", text: "", config: DEFAULTS },
   ];
   for (const { why, text, config } of cases) it(why, () => assert.deepEqual(extractRefs([text], config), []));
@@ -56,9 +56,72 @@ describe("extractRefs: code and comments do not hide real references", () => {
     { why: "after an HTML comment", text: "<!-- Closes #1 -->\nCloses #2", ids: ["2"] },
     { why: "an indented line inside a paragraph is not a code block", text: "Details\n    Closes #2", ids: ["2"] },
     { why: "a code span does not cross a blank line", text: "a ` b\n\nCloses #2 ` c", ids: ["2"] },
+    { why: "an unclosed comment is literal mid-line", text: "a <!-- b\nCloses #2", ids: ["2"] },
     { why: "a fence line with backticks in its info is a code span, not a fence", text: "```x``` then\nCloses #2", ids: ["2"] },
   ];
   for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
+});
+
+describe("extractRefs: one construct inside another does not swallow the text", () => {
+  const cases = [
+    { why: "an opening comment marker in a code span", text: "Use `<!--` to open a comment.\n\nCloses #107\n", ids: ["107"] },
+    { why: "a fence inside a comment", text: "<!--\nPaste logs after the line below:\n```\n-->\n\nCloses #107\n", ids: ["107"] },
+    { why: "an unclosed comment inside an indented block", text: "Example:\n\n    <!-- hidden\n\nCloses #107", ids: ["107"] },
+    { why: "an unclosed comment in the middle of a line", text: "x <!-- unclosed\n\nCloses #1", ids: ["1"] },
+    { why: "a comment inside a fence", text: "```html\n<!--\n```\nCloses #107", ids: ["107"] },
+    { why: "a backtick inside a comment", text: "<!-- it`s -->\nCloses #1 and `Closes #2`", ids: ["1"] },
+  ];
+  for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
+
+  it("hides everything after an unclosed comment that starts a line", () => {
+    assert.deepEqual(extractRefs(["<!-- unclosed\n\nCloses #1"], DEFAULTS), []);
+  });
+});
+
+describe("extractRefs: list items", () => {
+  const cases = [
+    { why: "an ordered item's continuation paragraph", text: "Steps:\n\n1. Rounds half up.\n\n    Closes #107\n" },
+    { why: "a bullet item's continuation paragraph", text: "- item\n\n    Closes #107" },
+    { why: "a nested item", text: "- a\n\n    - Closes #107" },
+    { why: "a tab-indented continuation", text: "* item\n\n\tCloses #107" },
+  ];
+  for (const { why, text } of cases) it(`links ${why}`, () => assert.deepEqual(extractRefs([text], DEFAULTS), ["107"]));
+
+  it("still ignores an indented block after the list has ended", () => {
+    assert.deepEqual(extractRefs(["- item\n\nPlain paragraph.\n\n    Closes #107\n"], DEFAULTS), []);
+  });
+
+  it("still ignores an indented block with no list", () => {
+    assert.deepEqual(extractRefs(["Text\n\n    Closes #107\n"], DEFAULTS), []);
+  });
+});
+
+describe("extractRefs: the keyword", () => {
+  it("is not preceded by a hyphen", () => {
+    assert.deepEqual(extractRefs(["un-closes 107"], DEFAULTS), []);
+    assert.deepEqual(extractRefs(["- closes 107"], DEFAULTS), ["107"]);
+  });
+
+  it("stays linear on a long run of spaces", () => {
+    const text = `Closes${" ".repeat(40000)}x`;
+    const started = performance.now();
+    assert.deepEqual(extractRefs([text], DEFAULTS), []);
+    assert.ok(performance.now() - started < 100);
+  });
+
+  it("stays fast on many backtick runs of distinct lengths", () => {
+    const text = Array.from({ length: 330 }, (_, n) => "`".repeat(n + 1)).join(" ");
+    const started = performance.now();
+    extractRefs([text], DEFAULTS);
+    assert.ok(performance.now() - started < 500);
+  });
+});
+
+describe("extractRefs: an alternation ticket pattern", () => {
+  it("matches either alternative in full", () => {
+    const config = resolveConfig({ ticket: "t2dv-\\d+|\\d+" });
+    assert.deepEqual(extractRefs(["Closes T2DV-74, 107 and #108"], config), ["T2DV-74", "107", "108"]);
+  });
 });
 
 describe("extractRefs: several texts", () => {
