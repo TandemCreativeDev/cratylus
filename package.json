@@ -1,0 +1,37 @@
+{
+  "name": "@tandemcreativedev/cratylus",
+  "version": "0.0.0",
+  "description": "One naming convention for branches and for the ticket a pull request names, shared by a git hook, a CI check and a tracker sync.",
+  "keywords": ["git", "branch", "naming", "convention", "pull-request", "ticket", "lefthook", "ci"],
+  "license": "MIT",
+  "author": "Tandem Creative Dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TandemCreativeDev/cratylus.git"
+  },
+  "type": "module",
+  "bin": {
+    "cratylus": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/fix-declarations.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test 'test/**/*.test.ts'",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.9"
+  },
+  "packageManager": "pnpm@10.18.0"
+}
