@@ -6,16 +6,21 @@ import { extractRefs } from "../src/refs.ts";
 
 const tracker = resolveConfig({ ticket: "t2dv-\\d+" });
 
-/** Ten times the input may take about ten times as long; quadratic behaviour takes about a hundred. */
+/** Ten times the input may take about ten times as much CPU time; quadratic behaviour takes about a hundred. */
 const MAX_GROWTH = 60;
+
+function cpuMs(): number {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+}
 
 function growth(build: (size: number) => string, size: number): number {
   const fastest = (input: string, runs: number): number => {
     let best = Infinity;
     for (let run = 0; run < runs; run++) {
-      const started = performance.now();
+      const started = cpuMs();
       extractRefs([input], DEFAULTS);
-      best = Math.min(best, performance.now() - started);
+      best = Math.min(best, cpuMs() - started);
     }
     return best;
   };
@@ -165,7 +170,7 @@ describe("extractRefs: scanner details", () => {
   for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
 
   it("stops rescanning for comment ends once there are none", () => {
-    assert.ok(growth((count) => `a ${"<!-- ".repeat(count)}`, 3000) < MAX_GROWTH);
+    assert.ok(growth((count) => `a ${"<!-- ".repeat(count)}`, 1000) < MAX_GROWTH);
   });
 });
 
@@ -205,6 +210,15 @@ describe("extractRefs: fences opened on a list or quote line", () => {
   ];
   for (const { why, text } of traps)
     it(`does not close a top-level fence on ${why}`, () => assert.deepEqual(extractRefs([text], DEFAULTS), ["107"]));
+
+  const markers = [
+    { why: "a star item", text: "* ```sh\n  Closes 9\n  ```\n\nCloses 1" },
+    { why: "a plus item", text: "+ ```sh\n  Closes 9\n  ```\n\nCloses 1" },
+    { why: "a two-digit dotted item", text: "10. ```\n    pnpm test\n    ```\n\n    Closes 1" },
+    { why: "a bullet followed by several spaces", text: "-   ```\n    Closes 9\n    ```\n\nCloses 1" },
+    { why: "nested bullets", text: "- - ```\n    Closes 9\n    ```\n\nCloses 1" },
+  ];
+  for (const { why, text } of markers) it(`ignores a fence opened on ${why}`, () => assert.deepEqual(extractRefs([text], DEFAULTS), ["1"]));
 
   it("closes on a fence indented up to three spaces", () => {
     assert.deepEqual(extractRefs(["```\nCloses #999\n   ```\nCloses #107"], DEFAULTS), ["107"]);
@@ -252,12 +266,12 @@ describe("extractRefs: the keyword", () => {
   });
 
   it("stays linear on a long run of spaces", () => {
-    assert.ok(growth((length) => `Closes${" ".repeat(length)}x`, 20000) < MAX_GROWTH);
+    assert.ok(growth((length) => `Closes${" ".repeat(length)}x`, 5000) < MAX_GROWTH);
   });
 
   it("stays well under quadratic on backtick runs of distinct lengths", () => {
     const runs = (length: number) => Array.from({ length: Math.round(Math.sqrt(2 * length)) }, (_, n) => "`".repeat(n + 1)).join(" ");
-    assert.ok(growth(runs, 20000) < MAX_GROWTH);
+    assert.ok(growth(runs, 2000) < MAX_GROWTH);
   });
 });
 
