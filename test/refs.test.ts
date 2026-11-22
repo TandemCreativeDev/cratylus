@@ -6,6 +6,22 @@ import { extractRefs } from "../src/refs.ts";
 
 const tracker = resolveConfig({ ticket: "t2dv-\\d+" });
 
+/** Ten times the input may take about ten times as long; quadratic behaviour takes about a hundred. */
+const MAX_GROWTH = 60;
+
+function growth(build: (size: number) => string, size: number): number {
+  const fastest = (input: string, runs: number): number => {
+    let best = Infinity;
+    for (let run = 0; run < runs; run++) {
+      const started = performance.now();
+      extractRefs([input], DEFAULTS);
+      best = Math.min(best, performance.now() - started);
+    }
+    return best;
+  };
+  return fastest(build(size * 10), 3) / Math.max(fastest(build(size), 5), 1);
+}
+
 describe("extractRefs: references", () => {
   const cases = [
     { text: "Closes #107", config: DEFAULTS, ids: ["107"] },
@@ -149,10 +165,7 @@ describe("extractRefs: scanner details", () => {
   for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
 
   it("stops rescanning for comment ends once there are none", () => {
-    const text = `a ${"<!-- ".repeat(30000)}`;
-    const started = performance.now();
-    extractRefs([text], DEFAULTS);
-    assert.ok(performance.now() - started < 150);
+    assert.ok(growth((count) => `a ${"<!-- ".repeat(count)}`, 3000) < MAX_GROWTH);
   });
 });
 
@@ -167,6 +180,50 @@ describe("extractRefs: an empty match is never a ticket id", () => {
   it("still finds real ids beside empty matches", () => {
     const config = resolveConfig({ ticket: "(?:t2dv-)?\\d*\\b" });
     assert.deepEqual(extractRefs(["Closes , 107 and t2dv-8"], config), ["107", "t2dv-8"]);
+  });
+});
+
+describe("extractRefs: fences opened on a list or quote line", () => {
+  const cases = [
+    { why: "an ordered item with a fenced command", text: "Steps to test:\n\n1. ```sh\n   pnpm test\n   ```\n2. Open the page\n\nCloses #107\n", ids: ["107"] },
+    { why: "a bullet with a backtick fence", text: "- ```sh\n  pnpm test\n  ```\n\nCloses #107", ids: ["107"] },
+    { why: "a bullet with a tilde fence", text: "- ~~~\n  pnpm test\n  ~~~\n\nCloses #107", ids: ["107"] },
+    { why: "a bullet fence that holds a reference", text: "- ```\n  Closes #999\n  ```\n\nCloses #107", ids: ["107"] },
+    { why: "a fence in a list inside a quote", text: "> - ```\n>   Closes #999\n>   ```\n\nCloses #107", ids: ["107"] },
+    { why: "a fence whose closer repeats the marker", text: "- ```\n  Closes #999\n- ```\nCloses #107", ids: ["107"] },
+    { why: "an ordered item with a two-digit number and a paren", text: "10) ```\n    Closes #999\n    ```\n\nCloses #107", ids: ["107"] },
+  ];
+  for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
+
+  const traps = [
+    { why: "a starred line in a ts block (JSDoc)", text: "```ts\n/**\n * ```\n * Closes #999\n */\n```\n\nCloses #107" },
+    { why: "a plus line in a diff block", text: "```diff\n+ ```\n+ Closes #999\n```\n\nCloses #107" },
+    { why: "a dash line in a block", text: "```md\n- ```\n- Closes #999\n```\n\nCloses #107" },
+    { why: "a numbered line in a block", text: "```md\n1. ```\n1. Closes #999\n```\n\nCloses #107" },
+    { why: "a fence indented four spaces in a python block", text: '```python\n"""\n    ```\n    Closes #999\n"""\n```\n\nCloses #107' },
+    { why: "a fence indented by a tab", text: "```python\n\t```\n\tCloses #999\n```\n\nCloses #107" },
+  ];
+  for (const { why, text } of traps)
+    it(`does not close a top-level fence on ${why}`, () => assert.deepEqual(extractRefs([text], DEFAULTS), ["107"]));
+
+  it("closes on a fence indented up to three spaces", () => {
+    assert.deepEqual(extractRefs(["```\nCloses #999\n   ```\nCloses #107"], DEFAULTS), ["107"]);
+  });
+});
+
+describe("extractRefs: more scanner details", () => {
+  const cases = [
+    { why: "a span from above ends at a quoted fence", text: "x ` y\n> ```\n> Closes 1\n> ```\nCloses 2 ` z", ids: ["2"] },
+    { why: "a whitespace-only line is blank", text: "Example:\n  \n    Closes 1\n\nCloses 2", ids: ["2"] },
+    { why: "an indented block on the first line", text: "    Closes 1\n\nCloses 2", ids: ["2"] },
+    { why: "an indented continuation keeps a list open", text: "- item\n  more\n\n    Closes 1", ids: ["1"] },
+    { why: "an empty fenced block", text: "```\n```\nCloses 1", ids: ["1"] },
+    { why: "text straight after a comment", text: "<!-- note -->Closes 1", ids: ["1"] },
+  ];
+  for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
+
+  it("keeps the casing first written when a later mention is upper case", () => {
+    assert.deepEqual(extractRefs(["Closes t2dv-7 and T2DV-7"], tracker), ["t2dv-7"]);
   });
 });
 
@@ -195,17 +252,12 @@ describe("extractRefs: the keyword", () => {
   });
 
   it("stays linear on a long run of spaces", () => {
-    const text = `Closes${" ".repeat(40000)}x`;
-    const started = performance.now();
-    assert.deepEqual(extractRefs([text], DEFAULTS), []);
-    assert.ok(performance.now() - started < 100);
+    assert.ok(growth((length) => `Closes${" ".repeat(length)}x`, 20000) < MAX_GROWTH);
   });
 
-  it("stays fast on many backtick runs of distinct lengths", () => {
-    const text = Array.from({ length: 330 }, (_, n) => "`".repeat(n + 1)).join(" ");
-    const started = performance.now();
-    extractRefs([text], DEFAULTS);
-    assert.ok(performance.now() - started < 500);
+  it("stays well under quadratic on backtick runs of distinct lengths", () => {
+    const runs = (length: number) => Array.from({ length: Math.round(Math.sqrt(2 * length)) }, (_, n) => "`".repeat(n + 1)).join(" ");
+    assert.ok(growth(runs, 20000) < MAX_GROWTH);
   });
 });
 
