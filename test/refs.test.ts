@@ -78,6 +78,98 @@ describe("extractRefs: one construct inside another does not swallow the text", 
   });
 });
 
+describe("extractRefs: CRLF line endings behave as LF", () => {
+  const cases = [
+    { why: "a stray backtick does not reach past a blank line", text: "Rename the ` key binding.\n\nCloses #107\n\nRun `pnpm test`.\n", ids: ["107"] },
+    { why: "a code span does not cross a blank line", text: "a ` b\n\nCloses #2 ` c", ids: ["2"] },
+    { why: "a code span across a line break hides its text", text: "`a\nCloses #1` Closes #2", ids: ["2"] },
+    { why: "a backtick fence", text: "Example:\n```md\nCloses #1\n```\nCloses #2", ids: ["2"] },
+    { why: "a tilde fence", text: "~~~\nCloses #1\n~~~\nCloses #2", ids: ["2"] },
+    { why: "an indented block", text: "Example:\n\n    Closes #1\n\nCloses #2", ids: ["2"] },
+    { why: "a closed comment", text: "<!--\nCloses #1\n-->\nCloses #2", ids: ["2"] },
+    { why: "an unclosed comment that starts a line", text: "<!-- x\n\nCloses #1", ids: [] },
+    { why: "an unclosed comment mid-line", text: "x <!-- y\n\nCloses #1", ids: ["1"] },
+    { why: "a list continuation", text: "- item\n\n    Closes #2", ids: ["2"] },
+    { why: "a list that has ended", text: "- item\n\nPlain.\n\n    Closes #1\n\nCloses #2", ids: ["2"] },
+    { why: "a blockquote fence", text: "> ~~~\n> Closes #1\n> ~~~\n\nCloses #2", ids: ["2"] },
+  ];
+  for (const { why, text, ids } of cases)
+    it(why, () => {
+      assert.deepEqual(extractRefs([text], DEFAULTS), ids);
+      assert.deepEqual(extractRefs([text.replace(/\n/g, "\r\n")], DEFAULTS), ids);
+      assert.deepEqual(extractRefs([text.replace(/\n/g, "\r")], DEFAULTS), ids);
+    });
+});
+
+describe("extractRefs: fences win over earlier constructs", () => {
+  it("a stray backtick above a fence does not swallow the fence", () => {
+    assert.deepEqual(extractRefs(["Escape the ` char:\n```sh\necho \\`\n```\n\nCloses #2"], DEFAULTS), ["2"]);
+  });
+
+  it("a tilde fence inside a blockquote is ignored", () => {
+    assert.deepEqual(extractRefs(["> ~~~\n> Closes 1\n> ~~~\n\nCloses 2"], DEFAULTS), ["2"]);
+  });
+
+  it("a backtick fence inside a blockquote is ignored", () => {
+    assert.deepEqual(extractRefs(["> ```\n> Closes 1\n> ```\n\nCloses 2"], DEFAULTS), ["2"]);
+  });
+});
+
+describe("extractRefs: scanner details", () => {
+  const cases = [
+    { why: "a fence indented three spaces", text: "   ```\nCloses #1\n   ```\nCloses #2", ids: ["2"] },
+    { why: "a fence inside a list item", text: "- item\n\n    ```\n    Closes #1\n    ```\n\nCloses #2", ids: ["2"] },
+    { why: "a 1) ordered marker opens a list", text: "1) item\n\n    Closes #2", ids: ["2"] },
+    { why: "a bullet needs a space to be a marker", text: "-item\n\n    Closes #1", ids: [] },
+    { why: "an ordered marker needs a space to be a marker", text: "1.item\n\n    Closes #1", ids: [] },
+    { why: "a fence is not closed by the other character", text: "```\nCloses #1\n~~~\nCloses #2\n```\nCloses #3", ids: ["3"] },
+    { why: "two tildes are not a fence", text: "~~\nCloses #1\n~~\nCloses #2", ids: ["1", "2"] },
+    { why: "two backticks with no closer are not a fence", text: "``\nCloses #1", ids: ["1"] },
+    { why: "a marker indented four spaces after a paragraph is not a list", text: "Text\n    - item\n\n    Closes #1", ids: [] },
+    { why: "a bare bullet opens a list", text: "-\n\n    Closes #1", ids: ["1"] },
+    { why: "a plus bullet opens a list", text: "+ item\n\n    Closes #1", ids: ["1"] },
+    { why: "a tilde fence ends a span from a line above", text: "a ` b\n~~~\nx `\n~~~\nCloses #2", ids: ["2"] },
+    { why: "and must be a whole word after a space", text: "Closes 1 and2", ids: ["1"] },
+    { why: "and must be a whole word after a comma", text: "Closes 1, and2", ids: ["1"] },
+    { why: "a closing fence may have surrounding whitespace", text: "```\nCloses #1\n  ```  \nCloses #2", ids: ["2"] },
+    { why: "a closing fence must be as long as the opening", text: "````\nCloses #1\n```\nCloses #2\n````\nCloses #3", ids: ["3"] },
+    { why: "a longer backtick run does not close a shorter span", text: "`a ``` Closes #1 b` Closes #2", ids: ["2"] },
+    { why: "a shorter backtick run does not close a longer span", text: "``a ` Closes #1 b`` Closes #2", ids: ["2"] },
+    { why: "an indented block straight after a fence", text: "```\nx\n```\n    Closes #1\n\nCloses #2", ids: ["2"] },
+    { why: "an unclosed comment that starts a later line", text: "text\n<!-- unclosed\nCloses #1", ids: [] },
+    { why: "an unclosed comment that starts a later indented line", text: "text\n  <!-- unclosed\nCloses #1", ids: [] },
+    { why: "an unclosed comment after a code span on the same line", text: "`x` <!-- unclosed\nCloses #1", ids: ["1"] },
+    { why: "an unclosed comment after a closed comment on the same line", text: "<!-- a --> <!-- unclosed\nCloses #1", ids: ["1"] },
+    { why: "a masked span leaves no keyword and id to join", text: "Closes `x` 107", ids: [] },
+    { why: "a masked comment leaves no keyword and id to join", text: "Closes <!-- x --> 107", ids: [] },
+    { why: "closes with no separator before the id", text: "closes107", ids: [] },
+    { why: "closes with a hash and no space", text: "Closes#107", ids: ["107"] },
+    { why: "closes with a colon and no space", text: "Closes:107", ids: ["107"] },
+  ];
+  for (const { why, text, ids } of cases) it(why, () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
+
+  it("stops rescanning for comment ends once there are none", () => {
+    const text = `a ${"<!-- ".repeat(30000)}`;
+    const started = performance.now();
+    extractRefs([text], DEFAULTS);
+    assert.ok(performance.now() - started < 150);
+  });
+});
+
+describe("extractRefs: an empty match is never a ticket id", () => {
+  for (const ticket of ["\\b", "(?=-)", "\\d*(?=-)", "(?:t2dv-)?\\d*\\b", "\\d*\\b"])
+    it(ticket, () => {
+      const config = resolveConfig({ ticket });
+      assert.deepEqual(extractRefs(["Closes , and reopens the dialog"], config), []);
+      assert.deepEqual(extractRefs(["Closes #, and Closes "], config), []);
+    });
+
+  it("still finds real ids beside empty matches", () => {
+    const config = resolveConfig({ ticket: "(?:t2dv-)?\\d*\\b" });
+    assert.deepEqual(extractRefs(["Closes , 107 and t2dv-8"], config), ["107", "t2dv-8"]);
+  });
+});
+
 describe("extractRefs: list items", () => {
   const cases = [
     { why: "an ordered item's continuation paragraph", text: "Steps:\n\n1. Rounds half up.\n\n    Closes #107\n" },
