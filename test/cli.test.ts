@@ -62,7 +62,54 @@ describe("help and errors", () => {
   });
 });
 
+describe("--json errors", () => {
+  const cases = [
+    { why: "a failed name", args: ["name", "--type", "fix", "--title", "x"], expect: /A ticket id is required for fix/ },
+    { why: "a bad config", args: ["branch", "x", "-c", path.join(scratch, "missing.json")], expect: /not found at/ },
+    { why: "an unknown command", args: ["frobnicate"], expect: /Unknown command frobnicate/ },
+    { why: "an unknown option", args: ["branch", "--nope"], expect: /nope/ },
+    { why: "a missing command", args: [], expect: /Missing command/ },
+    { why: "a payload with no pull_request", args: ["pr", "--event", () => write("push-json.json", "{}")], expect: /has no pull_request/ },
+  ];
+  for (const { why, args, expect } of cases)
+    it(`prints one JSON object on stdout for ${why}`, () => {
+      const resolved = args.map((arg) => (typeof arg === "function" ? arg() : arg));
+      const { status, stdout, stderr } = cratylus([...resolved, "--json"]);
+      assert.equal(status, 1);
+      assert.equal(stderr, "");
+      const result = JSON.parse(stdout);
+      assert.deepEqual(Object.keys(result), ["error"]);
+      assert.match(result.error, expect);
+    });
+});
+
+describe("unexpected arguments", () => {
+  const cases = [
+    ["name", "extra", "--type", "chore", "--title", "x"],
+    ["pr", "--title", "x", "extra1"],
+    ["init", "extra"],
+    ["refs", "a.md", "b.md"],
+    ["branch", "feat/1-a", "feat/2-b"],
+  ];
+  for (const args of cases)
+    it(args.join(" "), () => {
+      const { status, stderr } = cratylus(args);
+      assert.equal(status, 1);
+      assert.match(stderr, /^cratylus: Unexpected argument/);
+    });
+});
+
 describe("init", () => {
+  it("writes to the file named with -c", () => {
+    const dir = fs.mkdtempSync(path.join(scratch, "init-"));
+    const { status, stdout } = cratylus(["init", "-c", "other.json"], { cwd: dir });
+    assert.equal(status, 0);
+    assert.equal(stdout, "wrote other.json\n");
+    assert.ok(fs.existsSync(path.join(dir, "other.json")));
+    assert.ok(!fs.existsSync(path.join(dir, "cratylus.config.json")));
+    assert.match(cratylus(["init", "-c", "other.json"], { cwd: dir }).stderr, /other\.json already exists/);
+  });
+
   it("writes a starter config and refuses to overwrite it", () => {
     const dir = fs.mkdtempSync(path.join(scratch, "init-"));
     const first = cratylus(["init"], { cwd: dir });
@@ -207,6 +254,19 @@ describe("refs", () => {
 });
 
 describe("pr with flags", () => {
+  it("passes on --label no-ticket alone", () => {
+    assert.equal(cratylus(["pr", "--label", "no-ticket"]).status, 0);
+  });
+
+  it("passes on --bot alone", () => {
+    assert.equal(cratylus(["pr", "--bot"]).stdout, "ok: bot author, no ticket needed\n");
+  });
+
+  it("ignores $GITHUB_EVENT_PATH when --bot stands alone", () => {
+    const file = write("push-env.json", "{}");
+    assert.equal(cratylus(["pr", "--bot"], { env: { GITHUB_EVENT_PATH: file } }).status, 0);
+  });
+
   const body = write("pr-body.md", "Adds refunds.\n\nCloses #107\n");
   const empty = write("pr-empty.md", "<!-- Closes #1 -->\n");
 
@@ -268,6 +328,11 @@ describe("pr with an event payload", () => {
     assert.equal(stdout, "ok: references 107\n");
   });
 
+  it("treats a null user as not a bot", () => {
+    const file = write("null-user.json", JSON.stringify({ pull_request: { title: "Tidy", body: null, user: null } }));
+    assert.equal(cratylus(["pr", "--event", file]).status, 1);
+  });
+
   it("lets --title and --body-file replace the payload's", () => {
     const { status } = cratylus(["pr", "--event", EVENT, "--title", "Tidy", "--body-file", write("blank.md", "")]);
     assert.equal(status, 1);
@@ -305,6 +370,6 @@ describe("pr with an event payload", () => {
   it("fails clearly with neither flags nor a payload", () => {
     const { status, stderr } = cratylus(["pr"]);
     assert.equal(status, 1);
-    assert.match(stderr, /^cratylus: No pull request to check\. Pass --title, --body-file or --event/);
+    assert.match(stderr, /^cratylus: No pull request to check\. Pass --title, --body-file, --label, --bot or --event/);
   });
 });
