@@ -1,0 +1,9 @@
+{
+  "action": "opened",
+  "pull_request": {
+    "title": "Round refunds to the nearest penny",
+    "body": "Closes #107\n\nRounds half up.",
+    "labels": [{ "name": "bug" }],
+    "user": { "login": "maxitect", "type": "User" }
+  }
+}
