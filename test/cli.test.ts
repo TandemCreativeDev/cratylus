@@ -210,6 +210,12 @@ describe("name", () => {
     assert.match(stderr, /^cratylus: A ticket id is required for fix branches/);
   });
 
+  it("names a ticket that does not match the pattern", () => {
+    const { status, stderr } = cratylus(["name", "--type", "feat", "--ticket", "#107", "--title", "x"]);
+    assert.equal(status, 1);
+    assert.match(stderr, /^cratylus: "#107" is not a ticket id matching \/\\d\+\/\./);
+  });
+
   it("fails without --type or --title", () => {
     assert.match(cratylus(["name", "--title", "x"]).stderr, /name needs --type and --title/);
     assert.match(cratylus(["name", "--type", "chore"]).stderr, /name needs --type and --title/);
@@ -260,11 +266,6 @@ describe("pr with flags", () => {
 
   it("passes on --bot alone", () => {
     assert.equal(cratylus(["pr", "--bot"]).stdout, "ok: bot author, no ticket needed\n");
-  });
-
-  it("ignores $GITHUB_EVENT_PATH when --bot stands alone", () => {
-    const file = write("push-env.json", "{}");
-    assert.equal(cratylus(["pr", "--bot"], { env: { GITHUB_EVENT_PATH: file } }).status, 0);
   });
 
   const body = write("pr-body.md", "Adds refunds.\n\nCloses #107\n");
@@ -328,20 +329,63 @@ describe("pr with an event payload", () => {
     assert.equal(stdout, "ok: references 107\n");
   });
 
+  const payload = (name: string, pullRequest: object) => write(name, JSON.stringify({ pull_request: pullRequest }));
+
   it("treats a null user as not a bot", () => {
-    const file = write("null-user.json", JSON.stringify({ pull_request: { title: "Tidy", body: null, user: null } }));
-    assert.equal(cratylus(["pr", "--event", file]).status, 1);
+    const file = payload("null-user.json", { title: "Tidy", body: null, user: null });
+    const { status, stdout } = cratylus(["pr", "--event", file, "--json"]);
+    assert.equal(status, 1);
+    const result = JSON.parse(stdout);
+    assert.equal(result.ok, false);
+    assert.match(result.message, /names no ticket/);
   });
 
-  it("lets --title and --body-file replace the payload's", () => {
-    const { status } = cratylus(["pr", "--event", EVENT, "--title", "Tidy", "--body-file", write("blank.md", "")]);
-    assert.equal(status, 1);
+  it("lets --title replace the payload's title", () => {
+    const file = payload("title-ticket.json", { title: "Closes #5", body: null, labels: [] });
+    assert.equal(cratylus(["pr", "--event", file]).status, 0);
+    assert.equal(cratylus(["pr", "--event", file, "--title", "Tidy"]).status, 1);
+  });
+
+  it("lets --body-file replace the payload's body", () => {
+    const file = payload("body-ticket.json", { title: "Tidy", body: "Closes #5", labels: [] });
+    assert.equal(cratylus(["pr", "--event", file]).status, 0);
+    assert.equal(cratylus(["pr", "--event", file, "--body-file", write("blank.md", "")]).status, 1);
   });
 
   it("adds --label to the payload's labels", () => {
-    const file = write("unlinked.json", JSON.stringify({ pull_request: { title: "Tidy", body: null, labels: [{ name: "bug" }], user: { type: "User" } } }));
+    const file = payload("labelled.json", { title: "Tidy", body: null, labels: [{ name: "no-ticket" }] });
+    const { status, stdout } = cratylus(["pr", "--event", file, "--label", "other", "--json"]);
+    assert.equal(status, 0);
+    assert.deepEqual(JSON.parse(stdout), { ok: true, reason: "label" });
+  });
+
+  it("does not read $GITHUB_EVENT_PATH when --title is given", () => {
+    const file = payload("env-body.json", { title: "Closes #5", body: "Closes #5", labels: [] });
+    assert.equal(cratylus(["pr", "--title", "Tidy"], { env: { GITHUB_EVENT_PATH: file } }).status, 1);
+  });
+
+  it("adds --label so a labelled payload passes", () => {
+    const file = payload("unlinked.json", { title: "Tidy", body: null, labels: [{ name: "bug" }] });
     assert.equal(cratylus(["pr", "--event", file]).status, 1);
     assert.equal(cratylus(["pr", "--event", file, "--label", "no-ticket"]).status, 0);
+  });
+
+  it("adds --bot to a payload with no bot", () => {
+    const file = payload("human.json", { title: "Tidy", body: null, labels: [], user: { type: "User" } });
+    assert.deepEqual(JSON.parse(cratylus(["pr", "--event", file, "--bot", "--json"]).stdout), { ok: true, reason: "bot" });
+  });
+
+  it("uses $GITHUB_EVENT_PATH as the base for --label and --bot", () => {
+    const file = payload("env-base.json", { title: "Closes #5", body: null, labels: [] });
+    const { status, stdout } = cratylus(["pr", "--label", "other", "--json"], { env: { GITHUB_EVENT_PATH: file } });
+    assert.equal(status, 0);
+    assert.deepEqual(JSON.parse(stdout), { ok: true, reason: "ticket", ids: ["5"] });
+  });
+
+  it("lets --label and --bot decide alone when $GITHUB_EVENT_PATH is not a readable file", () => {
+    const env = { GITHUB_EVENT_PATH: path.join(scratch, "no-such-event.json") };
+    assert.equal(cratylus(["pr", "--label", "no-ticket"], { env }).status, 0);
+    assert.equal(cratylus(["pr", "--bot"], { env }).status, 0);
   });
 
   it("passes a bot payload", () => {

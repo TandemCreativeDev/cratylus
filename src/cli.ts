@@ -24,8 +24,9 @@ Commands:
   refs [file]                Print the ticket ids referenced in the text (default: stdin), one per line
   pr [--title <t>] [--body-file <f>] [--label <l>]... [--bot] [--event <file>]
                              Check a pull request names a ticket. Exit 1 if not
-                             With no --title, --body-file, --label, --bot or --event, reads
-                             the GitHub event payload at $GITHUB_EVENT_PATH
+                             With no --title, --body-file or --event, reads the GitHub event
+                             payload at $GITHUB_EVENT_PATH when there is one; --label and --bot
+                             add to it, and decide on their own when there is none
 
 Options:
   -c, --config <file>        Config file (default: ${CONFIG_FILE}, optional)
@@ -102,9 +103,10 @@ function pr(
   config: Config,
   json: boolean,
 ): number {
-  const standsAlone = flags.title !== undefined || flags.bodyFile !== undefined || flags.labels.length > 0 || flags.bot;
-  const eventFile = flags.event ?? (standsAlone ? undefined : process.env.GITHUB_EVENT_PATH);
-  if (!eventFile && !standsAlone)
+  const hasText = flags.title !== undefined || flags.bodyFile !== undefined;
+  const envFile = process.env.GITHUB_EVENT_PATH;
+  const eventFile = flags.event ?? (!hasText && envFile && fs.existsSync(envFile) ? envFile : undefined);
+  if (!eventFile && !hasText && flags.labels.length === 0 && !flags.bot)
     throw new Error("No pull request to check. Pass --title, --body-file, --label, --bot or --event, or run where GITHUB_EVENT_PATH is set.");
 
   const base: PullRequest = eventFile ? readEvent(eventFile) : { title: "", body: null, labels: [], bot: false };
