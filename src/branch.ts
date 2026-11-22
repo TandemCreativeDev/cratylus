@@ -49,29 +49,32 @@ export function validateBranch(name: string, config: Config): BranchResult {
   }
 
   const rest = lower.slice(slash + 1);
-  const ticketForm = new RegExp(`^(?<ticket>(?:${config.ticket}))-(?<description>${WORDS})$`, "i").exec(rest)?.groups;
+  const ticketPattern = new RegExp(`^(?<ticket>(?:${config.ticket}))-(?<description>${WORDS})$`, "i").exec(rest)?.groups;
+  const ticketForm = ticketPattern?.ticket ? ticketPattern : undefined;
   const dateForm = new RegExp(`^(?<description>${WORDS})-(?<date>\\d{8})$`).exec(rest)?.groups;
   const ticketStart = new RegExp(`^(?:${config.ticket})(?=-|$)`, "i").exec(rest);
+  const ticketLength = ticketStart?.[0].length ?? 0;
+  const dated = DATE_SUFFIX.exec(rest);
+  const required = config.ticketRequired.includes(type);
 
   if (ticketForm) {
     if (reasons.length === 0) return { valid: true, parts: { type, ticket: ticketForm.ticket, description: ticketForm.description } };
-  } else if (ticketStart) {
-    const afterTicket = rest.slice(ticketStart[0].length + 1);
-    if (afterTicket === "") reasons.push(`Add a short description after the ticket id, as ${type}/${ticketStart[0]}-<description>.`);
+  } else if (!required && dateForm && isRealDate(dateForm.date)) {
+    if (reasons.length === 0) return { valid: true, parts: { type, description: dateForm.description, date: dateForm.date } };
+  } else if (!required && dated && !isRealDate(dated[2])) {
+    reasons.push(`"${dated[2]}" is not a real calendar date. Write the date as DDMMYYYY.`);
+  } else if (ticketLength > 0) {
+    if (rest.slice(ticketLength + 1) === "") reasons.push(`Add a short description after the ticket id, as ${type}/${ticketStart![0]}-<description>.`);
     else reasons.push(WORDS_MESSAGE);
-  } else if (config.ticketRequired.includes(type)) {
+  } else if (required) {
     reasons.push(
       `${type} branches need a ticket id right after the slash, as ${type}/<ticket>-<description>, with a ticket matching /${config.ticket}/. A date suffix is not accepted for ${type}.`,
     );
-  } else if (dateForm && isRealDate(dateForm.date)) {
-    if (reasons.length === 0) return { valid: true, parts: { type, description: dateForm.description, date: dateForm.date } };
-  } else {
-    const dated = DATE_SUFFIX.exec(rest);
-    if (dated && !isRealDate(dated[2])) reasons.push(`"${dated[2]}" is not a real calendar date. Write the date as DDMMYYYY.`);
-    else if (!dated) reasons.push(`Add a ticket id after the slash (matching /${config.ticket}/) or end the name with the date as -DDMMYYYY.`);
+  } else if (!dated) {
+    reasons.push(`Add a ticket id after the slash (matching /${config.ticket}/) or end the name with the date as -DDMMYYYY.`);
   }
 
-  if (!ticketForm && !ticketStart && !WORDS_ONLY.test(DATE_SUFFIX.exec(rest)?.[1] ?? rest)) reasons.push(WORDS_MESSAGE);
+  if (!ticketForm && ticketLength === 0 && !WORDS_ONLY.test(rest)) reasons.push(WORDS_MESSAGE);
   return { valid: false, reasons };
 }
 
@@ -99,13 +102,16 @@ export function buildBranchName(input: BranchInput, config: Config): string {
   if (!description) throw new Error("The title has no letters or digits to build a description from.");
   if (!input.ticket && config.ticketRequired.includes(input.type))
     throw new Error(`A ticket id is required for ${input.type} branches.`);
+  if (input.ticket && !new RegExp(`^(?:${config.ticket})$`, "i").test(input.ticket))
+    throw new Error(`"${input.ticket}" is not a ticket id matching /${config.ticket}/.`);
 
-  const name = input.ticket
-    ? `${input.type}/${input.ticket.toLowerCase()}-${description}`
-    : `${input.type}/${description}-${formatDate(input.date)}`;
+  const ticket = input.ticket?.toLowerCase();
+  const name = ticket ? `${input.type}/${ticket}-${description}` : `${input.type}/${description}-${formatDate(input.date)}`;
   const result = validateBranch(name, config);
   if (!result.valid) throw new Error(result.reasons.join(" "));
-  if (!input.ticket && result.parts.ticket)
+  if (ticket && result.parts.ticket !== ticket)
+    throw new Error(`The name "${name}" reads back with the ticket id "${result.parts.ticket}", not "${ticket}". Reword the title.`);
+  if (!ticket && result.parts.ticket)
     throw new Error(
       `The title starts with "${result.parts.ticket}", which reads as a ticket id. Pass it as the ticket (--ticket) or reword the title.`,
     );

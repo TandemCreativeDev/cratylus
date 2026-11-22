@@ -73,6 +73,103 @@ describe("validateBranch: invalid names", () => {
   });
 });
 
+describe("validateBranch: a lettered ticket pattern and the dated form", () => {
+  const lettered = resolveConfig({ ticket: "[a-z]+-\\d+" });
+  const alternation = resolveConfig({ ticket: "(?:t2dv|ops)-\\d+" });
+
+  it("reads a one-word dated name as dated", () => {
+    assert.deepEqual(validateBranch("chore/cleanup-22112026", lettered), {
+      valid: true,
+      parts: { type: "chore", description: "cleanup", date: "22112026" },
+    });
+    assert.deepEqual(validateBranch("chore/ops-22112026", alternation), {
+      valid: true,
+      parts: { type: "chore", description: "ops", date: "22112026" },
+    });
+  });
+
+  it("still reads a ticket form first", () => {
+    assert.deepEqual(validateBranch("chore/abc-12-tidy", lettered), { valid: true, parts: { type: "chore", ticket: "abc-12", description: "tidy" } });
+  });
+
+  const cases = [
+    { name: "chore/abc-12", expect: /^Add a short description after the ticket id, as chore\/abc-12-<description>\.$/ },
+    { name: "docs/22112026", expect: /Add a ticket id after the slash/ },
+    { name: "chore/107", expect: /Add a ticket id after the slash/ },
+    { name: "feat/x-22112026", expect: /^Add a short description after the ticket id, as feat\/x-22112026-<description>\.$/ },
+    { name: "chore/cleanup-31022026", expect: /not a real calendar date/ },
+  ];
+  for (const { name, expect } of cases)
+    it(`keeps the reason for ${name}`, () => {
+      const result = validateBranch(name, lettered);
+      assert.equal(result.valid, false);
+      if (!result.valid) assert.match(result.reasons.join("\n"), expect);
+    });
+
+  it("builds a one-word dated name", () => {
+    assert.equal(buildBranchName({ type: "chore", title: "Cleanup", date: new Date(2026, 10, 22) }, lettered), "chore/cleanup-22112026");
+  });
+});
+
+describe("validateBranch: details", () => {
+  it("explains a bad description in a dated name with one reason", () => {
+    assert.deepEqual(validateBranch("chore/tidy--up-15112026", DEFAULTS), {
+      valid: false,
+      reasons: ["Write the description as words of lower case letters and digits joined by single hyphens, with none at the start or end."],
+    });
+  });
+
+  it("asks a required type for a ticket, not a date, when the date is impossible", () => {
+    const result = validateBranch("feat/tidy-31022026", DEFAULTS);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons.join("\n"), /feat branches need a ticket id/);
+  });
+
+  it("asks for a type when the name starts with a slash", () => {
+    const result = validateBranch("/tidy-15112026", DEFAULTS);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons[0], /Start the name with a type and a slash/);
+  });
+
+  it("needs exactly eight digits for a date", () => {
+    for (const name of ["chore/x-1511200", "chore/x-151120"]) {
+      const result = validateBranch(name, DEFAULTS);
+      assert.equal(result.valid, false);
+      if (!result.valid) assert.match(result.reasons[0], /Add a ticket id after the slash/);
+    }
+  });
+
+  it("reads a capital-letter ticket pattern in a name that has no description", () => {
+    const config = resolveConfig({ ticket: "[A-Z]+-\\d+" });
+    const result = validateBranch("feat/abc-12", config);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons[0], /^Add a short description after the ticket id/);
+  });
+
+  it("reads an upper-case dated name as one case fault", () => {
+    assert.deepEqual(validateBranch("Chore/Tidy-15112026", DEFAULTS), { valid: false, reasons: ['Use lower case only: "chore/tidy-15112026".'] });
+  });
+
+  it("matches a ticket pattern written in capitals against a lower-case name", () => {
+    const config = resolveConfig({ ticket: "[A-Z]+-\\d+" });
+    assert.deepEqual(validateBranch("feat/abc-12-thing", config), { valid: true, parts: { type: "feat", ticket: "abc-12", description: "thing" } });
+  });
+
+  it("rejects a year below 100", () => {
+    const result = validateBranch("chore/x-01010099", DEFAULTS);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons[0], /not a real calendar date/);
+  });
+
+  it("never reads an empty match as a ticket", () => {
+    const config = resolveConfig({ ticket: "\\d*(?=-)" });
+    const result = validateBranch("feat/-foo", config);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons.join("\n"), /feat branches need a ticket id/);
+    assert.equal(validateBranch("chore/-foo", config).valid, false);
+  });
+});
+
 describe("isRealDate", () => {
   const cases: [string, boolean][] = [
     ["15112026", true],
@@ -80,6 +177,8 @@ describe("isRealDate", () => {
     ["29022026", false],
     ["31042026", false],
     ["00012026", false],
+    ["01010099", false],
+    ["01010100", true],
     ["31122026", true],
   ];
   for (const [date, expected] of cases) it(`${date} is ${expected}`, () => assert.equal(isRealDate(date), expected));
@@ -93,6 +192,7 @@ describe("slugify", () => {
     ["--Already--hyphenated--", "already-hyphenated"],
     ["Refund 2.5% rounding", "refund-2-5-rounding"],
     ["!!!", ""],
+    ["Søren Åse", "s-ren-ase"],
   ];
   for (const [title, slug] of cases) it(JSON.stringify(title), () => assert.equal(slugify(title), slug));
 });
@@ -126,6 +226,26 @@ describe("buildBranchName", () => {
 
   it("fails when the title leaves no description", () => {
     assert.throws(() => buildBranchName({ type: "chore", title: "???", date }, DEFAULTS), /no letters or digits/);
+  });
+
+  it("pads the month", () => {
+    assert.equal(buildBranchName({ type: "chore", title: "Tidy", date: new Date(2026, 0, 15) }, DEFAULTS), "chore/tidy-15012026");
+  });
+
+  it("refuses a ticket that does not match the pattern in full", () => {
+    for (const ticket of ["12-34", "#107", "107abc"])
+      assert.throws(
+        () => buildBranchName({ type: "feat", ticket, title: "thing", date }, DEFAULTS),
+        new RegExp(`"${ticket}" is not a ticket id matching /\\\\d\\+/\\.`),
+      );
+  });
+
+  it("refuses a ticket that reads back differently", () => {
+    const config = resolveConfig({ ticket: "\\d+|\\d+-\\d+" });
+    assert.throws(
+      () => buildBranchName({ type: "feat", ticket: "12-34", title: "thing", date }, config),
+      /reads back with the ticket id "12", not "12-34"/,
+    );
   });
 
   it("fails when a title without a ticket would read as one", () => {
