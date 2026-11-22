@@ -19,6 +19,12 @@ describe("validateBranch: valid names", () => {
     it(name, () => assert.deepEqual(validateBranch(name, config), { valid: true, parts }));
 });
 
+describe("validateBranch: an alternation ticket pattern", () => {
+  const either = resolveConfig({ ticket: "t2dv-\\d+|\\d+" });
+  for (const [name, ticket] of [["feat/t2dv-74-cancel", "t2dv-74"], ["feat/74-cancel", "74"]])
+    it(name, () => assert.deepEqual(validateBranch(name, either), { valid: true, parts: { type: "feat", ticket, description: "cancel" } }));
+});
+
 describe("validateBranch: invalid names", () => {
   const cases = [
     { why: "type not in types", name: "wip/107-thing", config: DEFAULTS, expect: /"wip" is not an allowed type/ },
@@ -34,7 +40,11 @@ describe("validateBranch: invalid names", () => {
     { why: "trailing hyphen", name: "chore/tidy-up-", config: DEFAULTS, expect: /single hyphens/ },
     { why: "underscore in description", name: "chore/tidy_up-15112026", config: DEFAULTS, expect: /single hyphens/ },
     { why: "optional type with neither ticket nor date", name: "chore/upgrade-dependencies", config: DEFAULTS, expect: /Add a ticket id after the slash/ },
-    { why: "ticket without a description", name: "fix/107", config: DEFAULTS, expect: /fix branches need a ticket id/ },
+    { why: "required type with a ticket and no description", name: "fix/107", config: DEFAULTS, expect: /^Add a short description after the ticket id, as fix\/107-<description>\.$/ },
+    { why: "required type with a ticket and a trailing hyphen", name: "fix/107-", config: DEFAULTS, expect: /^Add a short description after the ticket id/ },
+    { why: "required type with a ticket and a doubled hyphen", name: "feat/107-refund--rounding", config: DEFAULTS, expect: /^Write the description as words/ },
+    { why: "lettered ticket with a malformed description", name: "feat/t2dv-74-Cancel_it", config: tracker, expect: /^Use lower case only.*\n.*Write the description as words/s },
+    { why: "optional type with a ticket and no description", name: "chore/107", config: DEFAULTS, expect: /^Add a short description after the ticket id/ },
     { why: "ticket id runs into letters", name: "fix/107abc-refund", config: DEFAULTS, expect: /fix branches need a ticket id/ },
     { why: "letters in the ticket do not match a numeric pattern", name: "fix/t2dv-74-refund", config: DEFAULTS, expect: /fix branches need a ticket id/ },
     { why: "numeric ticket does not match a lettered pattern", name: "feat/74-cancel", config: tracker, expect: /feat branches need a ticket id.*t2dv/ },
@@ -45,6 +55,17 @@ describe("validateBranch: invalid names", () => {
       assert.equal(result.valid, false);
       if (!result.valid) assert.match(result.reasons.join("\n"), expect);
     });
+
+  it("does not blame the ticket or the date when the ticket is present", () => {
+    for (const name of ["feat/107", "feat/107-refund--rounding"]) {
+      const result = validateBranch(name, DEFAULTS);
+      assert.equal(result.valid, false);
+      if (!result.valid) {
+        assert.equal(result.reasons.length, 1);
+        assert.doesNotMatch(result.reasons[0], /ticket id right after the slash|date suffix/);
+      }
+    }
+  });
 
   it("reports a single reason for upper case alone", () => {
     const result = validateBranch("fix/107-Refund", DEFAULTS);
@@ -105,6 +126,25 @@ describe("buildBranchName", () => {
 
   it("fails when the title leaves no description", () => {
     assert.throws(() => buildBranchName({ type: "chore", title: "???", date }, DEFAULTS), /no letters or digits/);
+  });
+
+  it("fails when a title without a ticket would read as one", () => {
+    assert.throws(
+      () => buildBranchName({ type: "chore", title: "2024 update", date }, DEFAULTS),
+      /title starts with "2024", which reads as a ticket id\. Pass it as the ticket \(--ticket\) or reword the title/,
+    );
+    assert.throws(
+      () => buildBranchName({ type: "docs", title: "T2DV-74 follow up", date }, tracker),
+      /title starts with "t2dv-74"/,
+    );
+  });
+
+  it("allows the same title when the ticket is passed", () => {
+    assert.equal(buildBranchName({ type: "chore", ticket: "7", title: "2024 update", date }, DEFAULTS), "chore/7-2024-update");
+  });
+
+  it("allows a number later in the title", () => {
+    assert.equal(buildBranchName({ type: "chore", title: "Update 2024", date }, DEFAULTS), "chore/update-2024-05112026");
   });
 
   it("builds names that validate", () => {
