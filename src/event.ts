@@ -16,7 +16,7 @@ export function parsePullRequestEvent(payload: unknown): PullRequest {
   const { title, body, labels, user } = payload.pull_request;
   if (typeof title !== "string") throw new Error("pull_request.title must be a string");
   if (body !== undefined && body !== null && typeof body !== "string") throw new Error("pull_request.body must be a string or null");
-  if (user !== undefined && !isRecord(user)) throw new Error("pull_request.user must be an object");
+  if (user !== undefined && user !== null && !isRecord(user)) throw new Error("pull_request.user must be an object or null");
 
-  return { title, body: body ?? null, labels: readLabels(labels), bot: user?.type === "Bot" };
+  return { title, body: body ?? null, labels: readLabels(labels), bot: isRecord(user) && user.type === "Bot" };
 }
