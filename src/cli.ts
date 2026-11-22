@@ -17,21 +17,23 @@ const HELP = `Usage: cratylus <command> [options]
 Checks branch names and pull request ticket references against one naming convention.
 
 Commands:
-  init                       Write a starter ${CONFIG_FILE} (refuse if it exists)
+  init                       Write a starter ${CONFIG_FILE}, or the file given with -c (refuse if it exists)
   branch [name]              Check a branch name (default: the current branch). Exit 1 if invalid
   name --type <t> [--ticket <id>] --title <text>
                              Print the branch name for a piece of work (date: today)
   refs [file]                Print the ticket ids referenced in the text (default: stdin), one per line
   pr [--title <t>] [--body-file <f>] [--label <l>]... [--bot] [--event <file>]
                              Check a pull request names a ticket. Exit 1 if not
-                             With no --title, --body-file or --event, reads the GitHub
-                             event payload at $GITHUB_EVENT_PATH
+                             With no --title, --body-file, --label, --bot or --event, reads
+                             the GitHub event payload at $GITHUB_EVENT_PATH
 
 Options:
   -c, --config <file>        Config file (default: ${CONFIG_FILE}, optional)
       --json                 Print the result as JSON
   -h, --help                 Show this help
 `;
+
+const MAX_ARGUMENTS: Record<string, number> = { init: 0, branch: 1, name: 0, refs: 1, pr: 0 };
 
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
@@ -48,11 +50,11 @@ function currentBranch(): string {
   return branch;
 }
 
-function init(json: boolean): number {
-  if (fs.existsSync(CONFIG_FILE)) throw new Error(`${CONFIG_FILE} already exists`);
-  fs.writeFileSync(CONFIG_FILE, `${JSON.stringify(DEFAULTS, null, 2)}\n`);
-  if (json) printJson({ wrote: CONFIG_FILE });
-  else console.log(`wrote ${CONFIG_FILE}`);
+function init(file: string, json: boolean): number {
+  if (fs.existsSync(file)) throw new Error(`${file} already exists`);
+  fs.writeFileSync(file, `${JSON.stringify(DEFAULTS, null, 2)}\n`);
+  if (json) printJson({ wrote: file });
+  else console.log(`wrote ${file}`);
   return 0;
 }
 
@@ -100,9 +102,10 @@ function pr(
   config: Config,
   json: boolean,
 ): number {
-  const eventFile = flags.event ?? (flags.title === undefined && flags.bodyFile === undefined ? process.env.GITHUB_EVENT_PATH : undefined);
-  if (!eventFile && flags.title === undefined && flags.bodyFile === undefined)
-    throw new Error("No pull request to check. Pass --title, --body-file or --event, or run where GITHUB_EVENT_PATH is set.");
+  const standsAlone = flags.title !== undefined || flags.bodyFile !== undefined || flags.labels.length > 0 || flags.bot;
+  const eventFile = flags.event ?? (standsAlone ? undefined : process.env.GITHUB_EVENT_PATH);
+  if (!eventFile && !standsAlone)
+    throw new Error("No pull request to check. Pass --title, --body-file, --label, --bot or --event, or run where GITHUB_EVENT_PATH is set.");
 
   const base: PullRequest = eventFile ? readEvent(eventFile) : { title: "", body: null, labels: [], bot: false };
   const check = checkPullRequest(
@@ -145,9 +148,11 @@ function run(): number {
   if (!command) throw new Error("Missing command. Run cratylus --help.");
   const json = values.json ?? false;
 
-  if (command === "init") return init(json);
+  if (!Object.hasOwn(MAX_ARGUMENTS, command)) throw new Error(`Unknown command ${command}. Run cratylus --help.`);
+  if (args.length > MAX_ARGUMENTS[command]) throw new Error(`Unexpected argument ${args[MAX_ARGUMENTS[command]]}. Run cratylus --help.`);
+
+  if (command === "init") return init(values.config ?? CONFIG_FILE, json);
   const config = loadConfig(values.config);
-  if (args.length > 1) throw new Error(`Unexpected argument ${args[1]}. Run cratylus --help.`);
 
   switch (command) {
     case "branch":
@@ -170,6 +175,8 @@ function run(): number {
 try {
   process.exitCode = run();
 } catch (error) {
-  console.error(`cratylus: ${(error as Error).message}`);
+  const message = (error as Error).message;
+  if (process.argv.includes("--json")) printJson({ error: message });
+  else console.error(`cratylus: ${message}`);
   process.exitCode = 1;
 }
