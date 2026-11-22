@@ -20,6 +20,8 @@ export interface BranchInput {
 const WORDS = "[a-z0-9]+(?:-[a-z0-9]+)*";
 const WORDS_ONLY = new RegExp(`^${WORDS}$`);
 const DATE_SUFFIX = /^(.*)-(\d{8})$/;
+const WORDS_MESSAGE =
+  "Write the description as words of lower case letters and digits joined by single hyphens, with none at the start or end.";
 const MAX_WORDS = 5;
 
 export function isRealDate(ddmmyyyy: string): boolean {
@@ -49,11 +51,15 @@ export function validateBranch(name: string, config: Config): BranchResult {
   const rest = lower.slice(slash + 1);
   const ticketForm = new RegExp(`^(?<ticket>(?:${config.ticket}))-(?<description>${WORDS})$`, "i").exec(rest)?.groups;
   const dateForm = new RegExp(`^(?<description>${WORDS})-(?<date>\\d{8})$`).exec(rest)?.groups;
-  const required = config.ticketRequired.includes(type);
+  const ticketStart = new RegExp(`^(?:${config.ticket})(?=-|$)`, "i").exec(rest);
 
   if (ticketForm) {
     if (reasons.length === 0) return { valid: true, parts: { type, ticket: ticketForm.ticket, description: ticketForm.description } };
-  } else if (required) {
+  } else if (ticketStart) {
+    const afterTicket = rest.slice(ticketStart[0].length + 1);
+    if (afterTicket === "") reasons.push(`Add a short description after the ticket id, as ${type}/${ticketStart[0]}-<description>.`);
+    else reasons.push(WORDS_MESSAGE);
+  } else if (config.ticketRequired.includes(type)) {
     reasons.push(
       `${type} branches need a ticket id right after the slash, as ${type}/<ticket>-<description>, with a ticket matching /${config.ticket}/. A date suffix is not accepted for ${type}.`,
     );
@@ -65,8 +71,7 @@ export function validateBranch(name: string, config: Config): BranchResult {
     else if (!dated) reasons.push(`Add a ticket id after the slash (matching /${config.ticket}/) or end the name with the date as -DDMMYYYY.`);
   }
 
-  if (!ticketForm && !WORDS_ONLY.test(DATE_SUFFIX.exec(rest)?.[1] ?? rest))
-    reasons.push("Write the description as words of lower case letters and digits joined by single hyphens, with none at the start or end.");
+  if (!ticketForm && !ticketStart && !WORDS_ONLY.test(DATE_SUFFIX.exec(rest)?.[1] ?? rest)) reasons.push(WORDS_MESSAGE);
   return { valid: false, reasons };
 }
 
@@ -100,5 +105,9 @@ export function buildBranchName(input: BranchInput, config: Config): string {
     : `${input.type}/${description}-${formatDate(input.date)}`;
   const result = validateBranch(name, config);
   if (!result.valid) throw new Error(result.reasons.join(" "));
+  if (!input.ticket && result.parts.ticket)
+    throw new Error(
+      `The title starts with "${result.parts.ticket}", which reads as a ticket id. Pass it as the ticket (--ticket) or reword the title.`,
+    );
   return name;
 }
