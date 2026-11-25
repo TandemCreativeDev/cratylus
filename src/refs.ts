@@ -1,3 +1,4 @@
+import { refTicket } from "./config.ts";
 import type { Config } from "./config.ts";
 
 const LIST_PREFIX = String.raw`(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*`;
@@ -142,11 +143,12 @@ const NOT_NEGATED = String.raw`(?<!(?:\b(?:not|never|no)|n't)[ \t]+[a-z]+)`;
  * or an issue URL, de-duplicated case-insensitively.
  */
 export function extractRefs(texts: string[], config: Config): string[] {
-  const id = `${ISSUE_PREFIX}(?:${config.ticket})(?![\\w-])`;
+  const ticket = refTicket(config);
+  const id = `${ISSUE_PREFIX}(?:${ticket})(?![\\w-])`;
   const keyword = `(?:${config.keywords.join("|")})`;
   const separator = "(?:[ \\t]*,[ \\t]*(?:and\\b[ \\t]*)?|[ \\t]+and\\b[ \\t]*)";
   const closes = new RegExp(`(?<![\\w-])${keyword}\\b${NOT_NEGATED}(?:[ \\t]*:)?[ \\t]*(?<list>${id}(?:${separator}${id})*)`, "gi");
-  const item = new RegExp(`${ISSUE_PREFIX}(?<id>(?:${config.ticket})(?![\\w-]))`, "gi");
+  const item = new RegExp(`${ISSUE_PREFIX}(?<id>(?:${ticket})(?![\\w-]))`, "gi");
 
   const found = new Map<string, string>();
   for (const text of texts) {

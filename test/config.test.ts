@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { DEFAULTS, loadConfig, resolveConfig } from "../src/config.ts";
+import { branchTicket, DEFAULTS, loadConfig, refTicket, resolveConfig } from "../src/config.ts";
 
 describe("resolveConfig", () => {
   it("fills in defaults", () => {
@@ -67,11 +67,23 @@ describe("resolveConfig", () => {
     { why: "empty types", raw: { types: [], ticketRequired: [] }, expect: /types must not be empty/ },
     { why: "a type with upper case", raw: { types: ["Feat"], ticketRequired: [] }, expect: /types must be lower case words joined by hyphens, not Feat/ },
     { why: "a non-string label", raw: { noTicketLabel: false }, expect: /noTicketLabel must be a non-empty string/ },
+    { why: "an empty branchTicket", raw: { branchTicket: "" }, expect: /branchTicket must be a non-empty string/ },
+    { why: "a refTicket that does not compile", raw: { refTicket: "(" }, expect: /refTicket is not a valid regular expression/ },
+    { why: "a branchTicket with a capture group", raw: { branchTicket: "(x)-\\d+" }, expect: /branchTicket must not contain a capture group/ },
+    { why: "a refTicket that matches the empty string", raw: { refTicket: "\\d*" }, expect: /refTicket must not match the empty string/ },
     { why: "keywords that are not an array", raw: { keywords: "fixes" }, expect: /keywords must be an array of strings/ },
     { why: "empty keywords", raw: { keywords: [] }, expect: /keywords must not be empty/ },
     { why: "a keyword that is not one word", raw: { keywords: ["fix es", "close*"] }, expect: /keywords must be single words of letters, not fix es, close\*/ },
   ];
   for (const { why, raw, expect } of malformed) it(`rejects ${why}`, () => assert.throws(() => resolveConfig(raw), expect));
+
+  it("leaves branchTicket and refTicket unset unless given, so they follow ticket", () => {
+    const config = resolveConfig({ ticket: "t2dv-\\d+" });
+    assert.equal(config.branchTicket, undefined);
+    assert.equal(config.refTicket, undefined);
+    assert.equal(branchTicket(config), "t2dv-\\d+");
+    assert.equal(refTicket(resolveConfig({ ticket: "t2dv-\\d+", refTicket: "\\d+" })), "\\d+");
+  });
 
   it("prefixes errors with the file it was given", () => {
     assert.throws(() => resolveConfig({ nope: 1 }, "ci/names.json"), /^Error: ci\/names\.json: unknown option nope/);

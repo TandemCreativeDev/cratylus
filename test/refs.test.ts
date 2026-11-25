@@ -341,3 +341,9 @@ describe("extractRefs: loose references", () => {
   });
 });
 
+describe("extractRefs: a separate reference ticket pattern", () => {
+  it("reads refs with refTicket, not ticket", () => {
+    const config = resolveConfig({ ticket: "proj-\\d+|\\d+", refTicket: "\\d+" });
+    assert.deepEqual(extractRefs(["Closes proj-12\nCloses #13"], config), ["13"]);
+  });
+});

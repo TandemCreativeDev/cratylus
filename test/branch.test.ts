@@ -305,3 +305,17 @@ describe("buildBranchName", () => {
     assert.equal(validateBranch(name, DEFAULTS).valid, true);
   });
 });
+
+describe("validateBranch: a separate branch ticket pattern", () => {
+  const config = resolveConfig({ ticket: "\\d+", branchTicket: "proj-\\d+" });
+
+  it("reads branches with branchTicket", () => {
+    assert.deepEqual(validateBranch("feat/proj-12-x", config), { valid: true, parts: { type: "feat", ticket: "proj-12", description: "x" } });
+    assert.equal(validateBranch("feat/12-x", config).valid, false);
+  });
+
+  it("builds names with branchTicket", () => {
+    assert.equal(buildBranchName({ type: "feat", ticket: "PROJ-12", title: "X", date: new Date() }, config), "feat/proj-12-x");
+    assert.throws(() => buildBranchName({ type: "feat", ticket: "12", title: "X", date: new Date() }, config), /matching \/proj-\\d\+\//);
+  });
+});

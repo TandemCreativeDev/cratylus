@@ -1,3 +1,4 @@
+import { branchTicket } from "./config.ts";
 import type { Config } from "./config.ts";
 
 export interface BranchParts {
@@ -34,6 +35,7 @@ export function isRealDate(ddmmyyyy: string): boolean {
 
 export function validateBranch(name: string, config: Config): BranchResult {
   const reasons: string[] = [];
+  const ticket = branchTicket(config);
   const lower = name.toLowerCase();
   if (lower !== name) reasons.push(`Use lower case only: "${lower}".`);
 
@@ -49,10 +51,10 @@ export function validateBranch(name: string, config: Config): BranchResult {
   }
 
   const rest = lower.slice(slash + 1);
-  const ticketPattern = new RegExp(`^(?<ticket>(?:${config.ticket}))-(?<description>${WORDS})$`, "i").exec(rest)?.groups;
+  const ticketPattern = new RegExp(`^(?<ticket>(?:${ticket}))-(?<description>${WORDS})$`, "i").exec(rest)?.groups;
   const ticketForm = ticketPattern?.ticket ? ticketPattern : undefined;
   const dateForm = new RegExp(`^(?<description>${WORDS})-(?<date>\\d{8})$`).exec(rest)?.groups;
-  const ticketStart = new RegExp(`^(?:${config.ticket})(?=-|$)`, "i").exec(rest);
+  const ticketStart = new RegExp(`^(?:${ticket})(?=-|$)`, "i").exec(rest);
   const ticketLength = ticketStart?.[0].length ?? 0;
   const dated = DATE_SUFFIX.exec(rest);
   const required = config.ticketRequired.includes(type);
@@ -68,10 +70,10 @@ export function validateBranch(name: string, config: Config): BranchResult {
     else reasons.push(WORDS_MESSAGE);
   } else if (required) {
     reasons.push(
-      `${type} branches need a ticket id right after the slash, as ${type}/<ticket>-<description>, with a ticket matching /${config.ticket}/. A date suffix is not accepted for ${type}.`,
+      `${type} branches need a ticket id right after the slash, as ${type}/<ticket>-<description>, with a ticket matching /${ticket}/. A date suffix is not accepted for ${type}.`,
     );
   } else if (!dated) {
-    reasons.push(`Add a ticket id after the slash (matching /${config.ticket}/) or end the name with the date as -DDMMYYYY.`);
+    reasons.push(`Add a ticket id after the slash (matching /${ticket}/) or end the name with the date as -DDMMYYYY.`);
   }
 
   if (!ticketForm && ticketLength === 0 && !WORDS_ONLY.test(rest)) reasons.push(WORDS_MESSAGE);
@@ -102,8 +104,9 @@ export function buildBranchName(input: BranchInput, config: Config): string {
   if (!description) throw new Error("The title has no letters or digits to build a description from.");
   if (!input.ticket && config.ticketRequired.includes(input.type))
     throw new Error(`A ticket id is required for ${input.type} branches.`);
-  if (input.ticket && !new RegExp(`^(?:${config.ticket})$`, "i").test(input.ticket))
-    throw new Error(`"${input.ticket}" is not a ticket id matching /${config.ticket}/.`);
+  const pattern = branchTicket(config);
+  if (input.ticket && !new RegExp(`^(?:${pattern})$`, "i").test(input.ticket))
+    throw new Error(`"${input.ticket}" is not a ticket id matching /${pattern}/.`);
 
   const ticket = input.ticket?.toLowerCase();
   const name = ticket ? `${input.type}/${ticket}-${description}` : `${input.type}/${description}-${formatDate(input.date)}`;
