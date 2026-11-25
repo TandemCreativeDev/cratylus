@@ -164,6 +164,14 @@ describe("branch", () => {
     assert.match(result.reasons[0], /not a real calendar date/);
   });
 
+  it("reports an ignored name", () => {
+    const config = write("ignore.json", JSON.stringify({ ignore: ["main"] }));
+    const { status, stdout } = cratylus(["branch", "main", "-c", config]);
+    assert.equal(status, 0);
+    assert.equal(stdout, "ignored: main\n");
+    assert.deepEqual(JSON.parse(cratylus(["branch", "main", "-c", config, "--json"]).stdout), { name: "main", valid: true, ignored: true });
+  });
+
   describe("current branch", () => {
     const repo = fs.mkdtempSync(path.join(scratch, "repo-"));
     git(repo, "init", "-q", "-b", "feat/107-refund-rounding");

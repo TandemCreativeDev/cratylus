@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildBranchName, isRealDate, slugify, validateBranch } from "../src/branch.ts";
+import { buildBranchName, isRealDate, matchesGlob, slugify, validateBranch } from "../src/branch.ts";
 import { DEFAULTS, resolveConfig } from "../src/config.ts";
 
 const tracker = resolveConfig({ ticket: "t2dv-\\d+" });
@@ -304,6 +304,29 @@ describe("buildBranchName", () => {
     const name = buildBranchName({ type: "fix", ticket: "107", title: "Refund rounding, finally", date }, DEFAULTS);
     assert.equal(validateBranch(name, DEFAULTS).valid, true);
   });
+});
+
+describe("validateBranch: ignore", () => {
+  const config = resolveConfig({ ignore: ["main", "revert-*", "dependabot/**", "release-please--*", "v?"] });
+
+  for (const name of ["main", "revert-12-fix/107-x", "dependabot/npm_and_yarn/foo-1.2.3", "release-please--branches--main", "v1"])
+    it(`ignores ${name}`, () => assert.deepEqual(validateBranch(name, config), { valid: true, ignored: true }));
+
+  for (const name of ["mainline", "Main", "dependabot", "v10", "xmain"])
+    it(`still checks ${name}`, () => assert.equal(validateBranch(name, config).valid, false));
+});
+
+describe("matchesGlob", () => {
+  const cases: [string, string, boolean][] = [
+    ["revert-*", "revert-12-x", true],
+    ["revert-*", "revert-12-fix/107-x", true],
+    ["revert-*", "x/revert-12", false],
+    ["**", "a/b/c", true],
+    ["a.b", "a.b", true],
+    ["a.b", "axb", false],
+    ["feat/(x)", "feat/(x)", true],
+  ];
+  for (const [glob, name, expected] of cases) it(`${glob} on ${name}`, () => assert.equal(matchesGlob(name, glob), expected));
 });
 
 describe("validateBranch: a separate branch ticket pattern", () => {

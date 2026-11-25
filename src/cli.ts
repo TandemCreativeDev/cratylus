@@ -59,12 +59,16 @@ function init(file: string, json: boolean): number {
   return 0;
 }
 
+function report(name: string, result: BranchResult): void {
+  if (!result.valid) console.error([`cratylus: invalid branch name "${name}"`, ...result.reasons.map((reason) => `  - ${reason}`)].join("\n"));
+  else console.log("ignored" in result ? `ignored: ${name}` : `valid: ${name}`);
+}
+
 function branch(name: string | undefined, config: Config, json: boolean): number {
   const checked = name ?? currentBranch();
-  const result: BranchResult = validateBranch(checked, config);
+  const result = validateBranch(checked, config);
   if (json) printJson({ name: checked, ...result });
-  else if (result.valid) console.log(`valid: ${checked}`);
-  else console.error([`cratylus: invalid branch name "${checked}"`, ...result.reasons.map((reason) => `  - ${reason}`)].join("\n"));
+  else report(checked, result);
   return result.valid ? 0 : 1;
 }
 

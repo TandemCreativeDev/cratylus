@@ -1,4 +1,4 @@
-export { buildBranchName, isRealDate, slugify, validateBranch } from "./branch.ts";
+export { buildBranchName, isRealDate, matchesGlob, slugify, validateBranch } from "./branch.ts";
 export type { BranchInput, BranchParts, BranchResult } from "./branch.ts";
 export { branchTicket, CONFIG_FILE, DEFAULTS, loadConfig, refTicket, resolveConfig } from "./config.ts";
 export type { Config } from "./config.ts";
