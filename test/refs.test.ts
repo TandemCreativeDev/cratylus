@@ -291,3 +291,39 @@ describe("extractRefs: several texts", () => {
     assert.deepEqual(extractRefs(["<!-- oops", "Closes #5"], DEFAULTS), ["5"]);
   });
 });
+
+describe("extractRefs: keywords", () => {
+  const github = resolveConfig({ keywords: ["close", "closes", "closed", "fix", "fixes", "fixed", "resolve", "resolves", "resolved"] });
+
+  it("reads every configured keyword", () => {
+    const text = "Close #1\nCloses #2\nClosed #3\nFix #4\nFixes #5\nFixed #6\nResolve #7\nResolves #8\nResolved #9";
+    assert.deepEqual(extractRefs([text], github), ["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+  });
+
+  it("reads only closes by default", () => {
+    assert.deepEqual(extractRefs(["Fixes #1\nClosed #2\nCloses #3"], DEFAULTS), ["3"]);
+  });
+
+  it("matches a keyword as a whole word", () => {
+    assert.deepEqual(extractRefs(["Fixture #1, prefix #2, fixes-ish #3"], github), []);
+  });
+});
+
+describe("extractRefs: issue forms", () => {
+  const cases = [
+    { text: "Closes acme/web#238", ids: ["238"] },
+    { text: "Closes acme.io/web-app#238", ids: ["238"] },
+    { text: "Closes https://github.com/acme/web/issues/238", ids: ["238"] },
+    { text: "Closes http://git.example.com/acme/web/issues/238.", ids: ["238"] },
+    { text: "Closes #1, acme/web#2 and https://github.com/acme/web/issues/3", ids: ["1", "2", "3"] },
+  ];
+  for (const { text, ids } of cases) it(JSON.stringify(text), () => assert.deepEqual(extractRefs([text], DEFAULTS), ids));
+
+  const misses = [
+    "Closes https://github.com/acme/web/pull/238",
+    "Closes acme/web/238",
+    "Closes https://github.com/acme/web/issues/238abc",
+  ];
+  for (const text of misses) it(`not ${JSON.stringify(text)}`, () => assert.deepEqual(extractRefs([text], DEFAULTS), []));
+});
+

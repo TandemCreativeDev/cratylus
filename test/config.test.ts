@@ -13,7 +13,7 @@ describe("resolveConfig", () => {
 
   it("keeps given options over defaults", () => {
     const config = resolveConfig({ ticket: "t2dv-\\d+", types: ["feat", "chore"], ticketRequired: ["feat"], noTicketLabel: "skip" });
-    assert.deepEqual(config, { ticket: "t2dv-\\d+", types: ["feat", "chore"], ticketRequired: ["feat"], noTicketLabel: "skip" });
+    assert.deepEqual(config, { ...DEFAULTS, ticket: "t2dv-\\d+", types: ["feat", "chore"], ticketRequired: ["feat"], noTicketLabel: "skip" });
   });
 
   it("allows $schema", () => {
@@ -67,6 +67,9 @@ describe("resolveConfig", () => {
     { why: "empty types", raw: { types: [], ticketRequired: [] }, expect: /types must not be empty/ },
     { why: "a type with upper case", raw: { types: ["Feat"], ticketRequired: [] }, expect: /types must be lower case words joined by hyphens, not Feat/ },
     { why: "a non-string label", raw: { noTicketLabel: false }, expect: /noTicketLabel must be a non-empty string/ },
+    { why: "keywords that are not an array", raw: { keywords: "fixes" }, expect: /keywords must be an array of strings/ },
+    { why: "empty keywords", raw: { keywords: [] }, expect: /keywords must not be empty/ },
+    { why: "a keyword that is not one word", raw: { keywords: ["fix es", "close*"] }, expect: /keywords must be single words of letters, not fix es, close\*/ },
   ];
   for (const { why, raw, expect } of malformed) it(`rejects ${why}`, () => assert.throws(() => resolveConfig(raw), expect));
 

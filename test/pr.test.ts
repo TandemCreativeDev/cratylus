@@ -58,6 +58,14 @@ describe("checkPullRequest", () => {
   });
 });
 
+describe("checkPullRequest: keywords in the message", () => {
+  it("names the first configured keyword", () => {
+    const result = checkPullRequest(pr, resolveConfig({ keywords: ["fixes", "closes"] }));
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.message, /Add a line such as "Fixes <id>"/);
+  });
+});
+
 describe("parsePullRequestEvent", () => {
   const event = (pullRequest: unknown) => ({ pull_request: pullRequest });
 
