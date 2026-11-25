@@ -329,6 +329,38 @@ describe("validateBranch: the date window", () => {
   });
 });
 
+describe("validateBranch: near-miss ticket ids", () => {
+  const proj = resolveConfig({ ticket: "proj-\\d+" });
+
+  it("points at the part of the id that matched", () => {
+    assert.deepEqual(validateBranch("fix/proj-12b-x", proj), {
+      valid: false,
+      reasons: [
+        "fix branches need a ticket id right after the slash, as fix/<ticket>-<description>, with a ticket matching /proj-\\d+/. A date suffix is not accepted for fix.",
+        '"proj-12b" is not a ticket id: only "proj-12" matches /proj-\\d+/.',
+      ],
+    });
+  });
+
+  it("points at a near miss with no description after it", () => {
+    const result = validateBranch("fix/proj-12b", proj);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons[1], /^"proj-12b" is not a ticket id: only "proj-12" matches/);
+  });
+
+  it("points at a near miss on a type that does not need a ticket", () => {
+    const result = validateBranch("chore/proj-12b-x", proj);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.reasons.join("\n"), /Add a ticket id after the slash.*\n"proj-12b" is not a ticket id/);
+  });
+
+  it("says nothing more when nothing matched", () => {
+    const result = validateBranch("fix/thing-x", proj);
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.equal(result.reasons.length, 1);
+  });
+});
+
 describe("validateBranch: ignore", () => {
   const config = resolveConfig({ ignore: ["main", "revert-*", "dependabot/**", "release-please--*", "v?"] });
 
