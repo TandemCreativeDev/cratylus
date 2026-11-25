@@ -24,6 +24,7 @@ const DATE_SUFFIX = /^(.*)-(\d{8})$/;
 const WORDS_MESSAGE =
   "Write the description as words of lower case letters and digits joined by single hyphens, with none at the start or end.";
 const MAX_WORDS = 5;
+const EARLIEST_YEAR = 2000;
 
 export function isRealDate(ddmmyyyy: string): boolean {
   const day = Number(ddmmyyyy.slice(0, 2));
@@ -31,6 +32,17 @@ export function isRealDate(ddmmyyyy: string): boolean {
   const year = Number(ddmmyyyy.slice(4));
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+/** Says what is wrong with a branch date, which must be a real day from 2000 up to the day after `today`. */
+function dateFault(ddmmyyyy: string, today: Date): string | undefined {
+  if (!isRealDate(ddmmyyyy)) return `"${ddmmyyyy}" is not a real calendar date. Write the date as DDMMYYYY.`;
+  const year = Number(ddmmyyyy.slice(4));
+  if (year < EARLIEST_YEAR) return `"${ddmmyyyy}" is before ${EARLIEST_YEAR}. Write the day the branch is cut as DDMMYYYY.`;
+  const time = Date.UTC(year, Number(ddmmyyyy.slice(2, 4)) - 1, Number(ddmmyyyy.slice(0, 2)));
+  const latest = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (time > latest) return `"${ddmmyyyy}" is in the future. Write the day the branch is cut as DDMMYYYY.`;
+  return undefined;
 }
 
 /** Matches a whole name against a glob, where `*` matches any run of characters, slashes included, and `?` any one. */
@@ -42,7 +54,7 @@ export function matchesGlob(name: string, glob: string): boolean {
   return new RegExp(`^${source}$`).test(name);
 }
 
-export function validateBranch(name: string, config: Config): BranchResult {
+export function validateBranch(name: string, config: Config, today: Date = new Date()): BranchResult {
   if (config.ignore.some((glob) => matchesGlob(name, glob))) return { valid: true, ignored: true };
   const reasons: string[] = [];
   const ticket = branchTicket(config);
@@ -67,14 +79,15 @@ export function validateBranch(name: string, config: Config): BranchResult {
   const ticketStart = new RegExp(`^(?:${ticket})(?=-|$)`, "i").exec(rest);
   const ticketLength = ticketStart?.[0].length ?? 0;
   const dated = DATE_SUFFIX.exec(rest);
+  const fault = dated ? dateFault(dated[2], today) : undefined;
   const required = config.ticketRequired.includes(type);
 
   if (ticketForm) {
     if (reasons.length === 0) return { valid: true, parts: { type, ticket: ticketForm.ticket, description: ticketForm.description } };
-  } else if (!required && dateForm && isRealDate(dateForm.date)) {
+  } else if (!required && dateForm && !fault) {
     if (reasons.length === 0) return { valid: true, parts: { type, description: dateForm.description, date: dateForm.date } };
-  } else if (!required && dated && !isRealDate(dated[2]) && (ticketLength === 0 || WORDS_ONLY.test(dated[1]))) {
-    reasons.push(`"${dated[2]}" is not a real calendar date. Write the date as DDMMYYYY.`);
+  } else if (!required && fault && (ticketLength === 0 || WORDS_ONLY.test(dated![1]))) {
+    reasons.push(fault);
   } else if (ticketLength > 0) {
     if (rest.slice(ticketLength + 1) === "") reasons.push(`Add a short description after the ticket id, as ${type}/${ticketStart![0]}-<description>.`);
     else reasons.push(WORDS_MESSAGE);
@@ -120,7 +133,7 @@ export function buildBranchName(input: BranchInput, config: Config): string {
 
   const ticket = input.ticket?.toLowerCase();
   const name = ticket ? `${input.type}/${ticket}-${description}` : `${input.type}/${description}-${formatDate(input.date)}`;
-  const result = validateBranch(name, config);
+  const result = validateBranch(name, config, input.date);
   if (!result.valid) throw new Error(result.reasons.join(" "));
   if ("ignored" in result) return name;
   if (ticket && result.parts.ticket !== ticket)

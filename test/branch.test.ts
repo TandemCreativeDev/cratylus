@@ -12,7 +12,7 @@ describe("validateBranch: valid names", () => {
     { name: "fix/107-refund-rounding", config: DEFAULTS, parts: { type: "fix", ticket: "107", description: "refund-rounding" } },
     { name: "chore/upgrade-dependencies-15112026", config: DEFAULTS, parts: { type: "chore", description: "upgrade-dependencies", date: "15112026" } },
     { name: "docs/12-readme", config: DEFAULTS, parts: { type: "docs", ticket: "12", description: "readme" } },
-    { name: "ci/pin-actions-29022028", config: DEFAULTS, parts: { type: "ci", description: "pin-actions", date: "29022028" } },
+    { name: "ci/pin-actions-29022024", config: DEFAULTS, parts: { type: "ci", description: "pin-actions", date: "29022024" } },
     { name: "fix/107-2fa-codes", config: DEFAULTS, parts: { type: "fix", ticket: "107", description: "2fa-codes" } },
   ];
   for (const { name, config, parts } of cases)
@@ -303,6 +303,29 @@ describe("buildBranchName", () => {
   it("builds names that validate", () => {
     const name = buildBranchName({ type: "fix", ticket: "107", title: "Refund rounding, finally", date }, DEFAULTS);
     assert.equal(validateBranch(name, DEFAULTS).valid, true);
+  });
+});
+
+describe("validateBranch: the date window", () => {
+  const today = new Date(2026, 10, 24);
+  const cases = [
+    { name: "chore/x-24112026", valid: true },
+    { name: "chore/x-25112026", valid: true },
+    { name: "chore/x-01012000", valid: true },
+    { name: "chore/x-26112026", expect: /^"26112026" is in the future\. Write the day the branch is cut as DDMMYYYY\.$/ },
+    { name: "chore/x-24112099", expect: /"24112099" is in the future/ },
+    { name: "chore/x-01011999", expect: /^"01011999" is before 2000\. Write the day the branch is cut as DDMMYYYY\.$/ },
+    { name: "chore/x-31022026", expect: /not a real calendar date/ },
+  ];
+  for (const { name, valid, expect } of cases)
+    it(name, () => {
+      const result = validateBranch(name, DEFAULTS, today);
+      assert.equal(result.valid, valid ?? false);
+      if (!result.valid && expect) assert.deepEqual(result.reasons.length, 1), assert.match(result.reasons[0], expect);
+    });
+
+  it("checks a built name against its own date", () => {
+    assert.equal(buildBranchName({ type: "chore", title: "Tidy", date: new Date(2099, 0, 1) }, DEFAULTS), "chore/tidy-01012099");
   });
 });
 
