@@ -10,6 +10,7 @@ import type { Config } from "./config.ts";
 import { parsePullRequestEvent } from "./event.ts";
 import { checkPullRequest } from "./pr.ts";
 import type { PullRequest, PullRequestCheck } from "./pr.ts";
+import { pushedBranches } from "./push.ts";
 import { extractRefs } from "./refs.ts";
 
 const HELP = `Usage: cratylus <command> [options]
@@ -18,7 +19,10 @@ Checks branch names and pull request ticket references against one naming conven
 
 Commands:
   init                       Write a starter ${CONFIG_FILE}, or the file given with -c (refuse if it exists)
-  branch [name]              Check a branch name (default: the current branch). Exit 1 if invalid
+  branch [-- name]           Check a branch name (default: the current branch). Exit 1 if invalid
+                             Put the name after -- so a name starting with - is not read as a flag
+  pre-push                   Check every branch named in git's pre-push input on stdin. Exit 1 if any
+                             is invalid. Deletes and tags are skipped. Arguments are ignored
   name --type <t> [--ticket <id>] --title <text>
                              Print the branch name for a piece of work (date: today)
   refs [file]                Print the ticket ids referenced in the text (default: stdin), one per line
@@ -34,7 +38,7 @@ Options:
   -h, --help                 Show this help
 `;
 
-const MAX_ARGUMENTS: Record<string, number> = { init: 0, branch: 1, name: 0, refs: 1, pr: 0 };
+const MAX_ARGUMENTS: Record<string, number> = { init: 0, branch: 1, "pre-push": 2, name: 0, refs: 1, pr: 0 };
 
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
@@ -70,6 +74,13 @@ function branch(name: string | undefined, config: Config, json: boolean): number
   if (json) printJson({ name: checked, ...result });
   else report(checked, result);
   return result.valid ? 0 : 1;
+}
+
+function prePush(config: Config, json: boolean): number {
+  const results = pushedBranches(fs.readFileSync(0, "utf8")).map((name) => ({ name, ...validateBranch(name, config) }));
+  if (json) printJson({ branches: results });
+  else for (const { name, ...result } of results) report(name, result);
+  return results.every((result) => result.valid) ? 0 : 1;
 }
 
 function name(type: string | undefined, ticket: string | undefined, title: string | undefined, config: Config, json: boolean): number {
@@ -165,6 +176,8 @@ function run(): number {
   switch (command) {
     case "branch":
       return branch(args[0], config, json);
+    case "pre-push":
+      return prePush(config, json);
     case "name":
       return name(values.type, values.ticket, values.title, config, json);
     case "refs":
