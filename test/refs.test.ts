@@ -327,3 +327,17 @@ describe("extractRefs: issue forms", () => {
   for (const text of misses) it(`not ${JSON.stringify(text)}`, () => assert.deepEqual(extractRefs([text], DEFAULTS), []));
 });
 
+describe("extractRefs: loose references", () => {
+  const misses = ["Closes #238-foo", "Closes t2dv-74-foo", "Not closes: #5", "never closes #5", "This doesn't close #5", "no closes #5"];
+  const keywords = resolveConfig({ ticket: "\\d+|t2dv-\\d+", keywords: ["closes", "close"] });
+  for (const text of misses) it(`not ${JSON.stringify(text)}`, () => assert.deepEqual(extractRefs([text], keywords), []));
+
+  it("still reads a negation word that is not right before the keyword", () => {
+    assert.deepEqual(extractRefs(["Not much here. Closes #5", "nothing closes #6", "Note: closes #7"], keywords), ["5", "6", "7"]);
+  });
+
+  it("still reads an id followed by punctuation", () => {
+    assert.deepEqual(extractRefs(["Closes #5. Closes #6; closes (#7)"], DEFAULTS), ["5", "6"]);
+  });
+});
+
