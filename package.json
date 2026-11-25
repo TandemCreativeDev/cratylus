@@ -1,6 +1,6 @@
 {
   "name": "@tandemcreativedev/cratylus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One naming convention for branches and for the ticket a pull request names, shared by a git hook, a CI check and a tracker sync.",
   "keywords": [
     "git",
