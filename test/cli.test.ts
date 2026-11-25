@@ -90,6 +90,7 @@ describe("unexpected arguments", () => {
     ["init", "extra"],
     ["refs", "a.md", "b.md"],
     ["branch", "feat/1-a", "feat/2-b"],
+    ["pre-push", "origin", "url", "extra"],
   ];
   for (const args of cases)
     it(args.join(" "), () => {
@@ -164,6 +165,12 @@ describe("branch", () => {
     assert.match(result.reasons[0], /not a real calendar date/);
   });
 
+  it("reads a name after -- as a name, not a flag", () => {
+    const { status, stderr } = cratylus(["branch", "--", "--help"]);
+    assert.equal(status, 1);
+    assert.match(stderr, /invalid branch name "--help"/);
+  });
+
   it("reports an ignored name", () => {
     const config = write("ignore.json", JSON.stringify({ ignore: ["main"] }));
     const { status, stdout } = cratylus(["branch", "main", "-c", config]);
@@ -195,6 +202,67 @@ describe("branch", () => {
       assert.equal(status, 1);
       assert.match(stderr, /^cratylus: Could not read the current branch/);
     });
+  });
+});
+
+describe("pre-push", () => {
+  const sha = "a".repeat(40);
+  const zero = "0".repeat(40);
+  const line = (local: string, localSha: string, remote: string) => `${local} ${localSha} ${remote} ${zero}\n`;
+  const config = write("push.json", JSON.stringify({ ignore: ["main"] }));
+
+  it("checks each pushed branch by its remote name", () => {
+    const input = line("HEAD", sha, "refs/heads/fix/107-x") + line("refs/heads/local", sha, "refs/heads/chore/tidy-15112026");
+    const { status, stdout } = cratylus(["pre-push", "origin", "git@example.com:a/b.git", "-c", config], { input });
+    assert.equal(status, 0);
+    assert.equal(stdout, "valid: fix/107-x\nvalid: chore/tidy-15112026\n");
+  });
+
+  it("fails when any pushed branch is invalid", () => {
+    const input = line("HEAD", sha, "refs/heads/fix/107-x") + line("HEAD", sha, "refs/heads/oops");
+    const { status, stdout, stderr } = cratylus(["pre-push", "-c", config], { input });
+    assert.equal(status, 1);
+    assert.equal(stdout, "valid: fix/107-x\n");
+    assert.match(stderr, /invalid branch name "oops"/);
+  });
+
+  it("skips deletes, tags and ignored branches", () => {
+    const input =
+      line("(delete)", zero, "refs/heads/oops") + line("refs/tags/v1", sha, "refs/tags/v1") + line("refs/heads/main", sha, "refs/heads/main");
+    const { status, stdout, stderr } = cratylus(["pre-push", "-c", config], { input });
+    assert.equal(status, 0);
+    assert.equal(stdout, "ignored: main\n");
+    assert.equal(stderr, "");
+  });
+
+  it("passes an empty push", () => {
+    assert.equal(cratylus(["pre-push"], { input: "" }).status, 0);
+  });
+
+  it("prints one JSON object", () => {
+    const { status, stdout } = cratylus(["pre-push", "--json"], { input: line("HEAD", sha, "refs/heads/oops") });
+    assert.equal(status, 1);
+    const result = JSON.parse(stdout);
+    assert.equal(result.branches.length, 1);
+    assert.equal(result.branches[0].name, "oops");
+    assert.equal(result.branches[0].valid, false);
+  });
+
+  it("runs as a real pre-push hook", () => {
+    const remote = fs.mkdtempSync(path.join(scratch, "remote-"));
+    const repo = fs.mkdtempSync(path.join(scratch, "pusher-"));
+    git(remote, "init", "-q", "--bare");
+    git(repo, "init", "-q", "-b", "fix/107-x");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "x");
+    git(repo, "remote", "add", "origin", remote);
+    fs.writeFileSync(path.join(repo, ".git/hooks/pre-push"), `#!/bin/sh\nexec "${process.execPath}" "${CLI}" pre-push "$@"\n`, { mode: 0o755 });
+    const push = (...args: string[]) => spawnSync("git", ["push", "-q", "origin", ...args], { cwd: repo, encoding: "utf8" });
+    assert.equal(push("HEAD").status, 0);
+    const bad = push("HEAD:refs/heads/oops");
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /invalid branch name "oops"/);
+    assert.equal(push("HEAD:refs/tags/v1").status, 0);
+    assert.equal(push(":fix/107-x").status, 0);
   });
 });
 

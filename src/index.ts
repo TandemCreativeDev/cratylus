@@ -5,4 +5,5 @@ export type { Config } from "./config.ts";
 export { parsePullRequestEvent } from "./event.ts";
 export { checkPullRequest } from "./pr.ts";
 export type { PullRequest, PullRequestCheck } from "./pr.ts";
+export { pushedBranches } from "./push.ts";
 export { extractRefs } from "./refs.ts";
