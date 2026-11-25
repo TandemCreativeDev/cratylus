@@ -133,12 +133,18 @@ function maskCode(source: string): string {
   return out.join("");
 }
 
-/** Ticket ids named by `Closes <id>` in the texts, in order, without `#`, de-duplicated case-insensitively. */
+const ISSUE_PREFIX = String.raw`(?:https?://[^\s/]+/[\w.-]+/[\w.-]+/issues/|[\w.-]+/[\w.-]+#|#)?`;
+
+/**
+ * Ticket ids named by a keyword such as `Closes <id>` in the texts, in order, without `#`, an `owner/repo#` prefix
+ * or an issue URL, de-duplicated case-insensitively.
+ */
 export function extractRefs(texts: string[], config: Config): string[] {
-  const id = `#?(?:${config.ticket})(?!\\w)`;
+  const id = `${ISSUE_PREFIX}(?:${config.ticket})(?!\\w)`;
+  const keyword = `(?:${config.keywords.join("|")})`;
   const separator = "(?:[ \\t]*,[ \\t]*(?:and\\b[ \\t]*)?|[ \\t]+and\\b[ \\t]*)";
-  const closes = new RegExp(`(?<![\\w-])closes\\b(?:[ \\t]*:)?[ \\t]*(?<list>${id}(?:${separator}${id})*)`, "gi");
-  const item = new RegExp(`#?(?<id>(?:${config.ticket})(?!\\w))`, "gi");
+  const closes = new RegExp(`(?<![\\w-])${keyword}\\b(?:[ \\t]*:)?[ \\t]*(?<list>${id}(?:${separator}${id})*)`, "gi");
+  const item = new RegExp(`${ISSUE_PREFIX}(?<id>(?:${config.ticket})(?!\\w))`, "gi");
 
   const found = new Map<string, string>();
   for (const text of texts) {
