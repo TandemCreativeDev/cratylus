@@ -74,6 +74,8 @@ describe("resolveConfig", () => {
     { why: "keywords that are not an array", raw: { keywords: "fixes" }, expect: /keywords must be an array of strings/ },
     { why: "empty keywords", raw: { keywords: [] }, expect: /keywords must not be empty/ },
     { why: "a keyword that is not one word", raw: { keywords: ["fix es", "close*"] }, expect: /keywords must be single words of letters, not fix es, close\*/ },
+    { why: "ignore that is not an array", raw: { ignore: "main" }, expect: /ignore must be an array of strings/ },
+    { why: "an empty glob", raw: { ignore: [""] }, expect: /ignore must not contain an empty glob/ },
   ];
   for (const { why, raw, expect } of malformed) it(`rejects ${why}`, () => assert.throws(() => resolveConfig(raw), expect));
 

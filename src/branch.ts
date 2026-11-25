@@ -9,7 +9,7 @@ export interface BranchParts {
   date?: string;
 }
 
-export type BranchResult = { valid: true; parts: BranchParts } | { valid: false; reasons: string[] };
+export type BranchResult = { valid: true; parts: BranchParts } | { valid: true; ignored: true } | { valid: false; reasons: string[] };
 
 export interface BranchInput {
   type: string;
@@ -33,7 +33,17 @@ export function isRealDate(ddmmyyyy: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+/** Matches a whole name against a glob, where `*` matches any run of characters, slashes included, and `?` any one. */
+export function matchesGlob(name: string, glob: string): boolean {
+  const source = glob
+    .split(/(\*+|\?)/)
+    .map((part) => (part.startsWith("*") ? ".*" : part === "?" ? "." : part.replace(/[.+^${}()|[\]\\]/g, "\\$&")))
+    .join("");
+  return new RegExp(`^${source}$`).test(name);
+}
+
 export function validateBranch(name: string, config: Config): BranchResult {
+  if (config.ignore.some((glob) => matchesGlob(name, glob))) return { valid: true, ignored: true };
   const reasons: string[] = [];
   const ticket = branchTicket(config);
   const lower = name.toLowerCase();
@@ -112,6 +122,7 @@ export function buildBranchName(input: BranchInput, config: Config): string {
   const name = ticket ? `${input.type}/${ticket}-${description}` : `${input.type}/${description}-${formatDate(input.date)}`;
   const result = validateBranch(name, config);
   if (!result.valid) throw new Error(result.reasons.join(" "));
+  if ("ignored" in result) return name;
   if (ticket && result.parts.ticket !== ticket)
     throw new Error(`The name "${name}" reads back with the ticket id "${result.parts.ticket}", not "${ticket}". Reword the title.`);
   if (!ticket && result.parts.ticket)

@@ -18,6 +18,8 @@ export interface Config {
   ticketRequired: string[];
   /** Pull request label that clears the ticket requirement. */
   noTicketLabel: string;
+  /** Globs for branch names that pass the branch check unexamined. */
+  ignore: string[];
 }
 
 export const CONFIG_FILE = "cratylus.config.json";
@@ -28,6 +30,7 @@ export const DEFAULTS: Config = {
   types: ["feat", "fix", "refactor", "perf", "docs", "test", "chore", "build", "ci"],
   ticketRequired: ["feat", "fix", "refactor", "perf"],
   noTicketLabel: "no-ticket",
+  ignore: [],
 };
 
 const TYPE_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -69,7 +72,7 @@ export function resolveConfig(raw: unknown, file: string = CONFIG_FILE): Config 
 
   for (const key of [...PATTERN_KEYS, "noTicketLabel"] as const)
     if (raw[key] !== undefined && (typeof raw[key] !== "string" || !raw[key])) fail(`${key} must be a non-empty string`);
-  for (const key of ["keywords", "types", "ticketRequired"] as const)
+  for (const key of ["keywords", "types", "ticketRequired", "ignore"] as const)
     if (raw[key] !== undefined && !isStringArray(raw[key])) fail(`${key} must be an array of strings`);
 
   const { $schema: _schema, ...options } = raw;
@@ -88,6 +91,7 @@ export function resolveConfig(raw: unknown, file: string = CONFIG_FILE): Config 
   if (badTypes.length) fail(`types must be lower case words joined by hyphens, not ${badTypes.join(", ")}`);
   const missing = config.ticketRequired.filter((type) => !config.types.includes(type));
   if (missing.length) fail(`ticketRequired has ${missing.join(", ")}, which ${missing.length > 1 ? "are" : "is"} not in types`);
+  if (config.ignore.some((glob) => !glob)) fail("ignore must not contain an empty glob");
 
   return config;
 }
