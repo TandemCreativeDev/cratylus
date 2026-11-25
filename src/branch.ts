@@ -95,12 +95,23 @@ export function validateBranch(name: string, config: Config, today: Date = new D
     reasons.push(
       `${type} branches need a ticket id right after the slash, as ${type}/<ticket>-<description>, with a ticket matching /${ticket}/. A date suffix is not accepted for ${type}.`,
     );
+    reasons.push(...nearMiss(rest, ticket));
   } else if (!dated) {
     reasons.push(`Add a ticket id after the slash (matching /${ticket}/) or end the name with the date as -DDMMYYYY.`);
+    reasons.push(...nearMiss(rest, ticket));
   }
 
   if (!ticketForm && ticketLength === 0 && !WORDS_ONLY.test(rest)) reasons.push(WORDS_MESSAGE);
   return { valid: false, reasons };
+}
+
+/** Points at a ticket id that matches the pattern only in part, as `proj-12` in `proj-12b-x`. */
+function nearMiss(rest: string, ticket: string): string[] {
+  const match = new RegExp(`^(?:${ticket})`, "i").exec(rest)?.[0];
+  if (!match) return [];
+  const end = rest.indexOf("-", match.length);
+  const written = rest.slice(0, end === -1 ? rest.length : end);
+  return [`"${written}" is not a ticket id: only "${match}" matches /${ticket}/.`];
 }
 
 export function slugify(title: string): string {
