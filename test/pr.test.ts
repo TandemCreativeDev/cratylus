@@ -66,6 +66,47 @@ describe("checkPullRequest: keywords in the message", () => {
   });
 });
 
+describe("checkPullRequest: matchBranchTicket", () => {
+  const config = resolveConfig({ matchBranchTicket: true });
+
+  it("passes when the references include the branch's ticket", () => {
+    const result = checkPullRequest({ ...pr, body: "Closes #5 and #107", branch: "fix/107-refund" }, config);
+    assert.deepEqual(result, { ok: true, reason: "ticket", ids: ["5", "107"] });
+  });
+
+  it("fails when the references leave out the branch's ticket", () => {
+    assert.deepEqual(checkPullRequest({ ...pr, body: "Closes #5", branch: "fix/107-refund" }, config), {
+      ok: false,
+      message: 'The branch names ticket 107, but this pull request references only 5. Add a line such as "Closes 107" to the description.',
+    });
+  });
+
+  it("compares without regard to case", () => {
+    const lettered = resolveConfig({ ticket: "t2dv-\\d+", matchBranchTicket: true });
+    assert.equal(checkPullRequest({ ...pr, body: "Closes T2DV-74", branch: "feat/t2dv-74-x" }, lettered).ok, true);
+  });
+
+  it("passes when the branch has no ticket, or is invalid or ignored", () => {
+    for (const branch of ["chore/tidy-15112026", "nonsense", "main"])
+      assert.equal(checkPullRequest({ ...pr, body: "Closes #5", branch }, resolveConfig({ matchBranchTicket: true, ignore: ["main"] })).ok, true);
+  });
+
+  it("is off by default", () => {
+    assert.equal(checkPullRequest({ ...pr, body: "Closes #5", branch: "fix/107-refund" }, DEFAULTS).ok, true);
+  });
+
+  it("still lets the label and bot pass", () => {
+    assert.equal(checkPullRequest({ ...pr, labels: ["no-ticket"], branch: "fix/107-refund" }, config).ok, true);
+    assert.equal(checkPullRequest({ ...pr, bot: true, body: "Closes #5", branch: "fix/107-refund" }, config).ok, true);
+  });
+
+  it("checks against branchTicket and refTicket separately", () => {
+    const split = resolveConfig({ ticket: "\\d+", branchTicket: "proj-\\d+|\\d+", refTicket: "\\d+", matchBranchTicket: true });
+    assert.equal(checkPullRequest({ ...pr, body: "Closes #12", branch: "feat/12-x" }, split).ok, true);
+    assert.equal(checkPullRequest({ ...pr, body: "Closes #13", branch: "feat/12-x" }, split).ok, false);
+  });
+});
+
 describe("parsePullRequestEvent", () => {
   const event = (pullRequest: unknown) => ({ pull_request: pullRequest });
 
@@ -74,6 +115,11 @@ describe("parsePullRequestEvent", () => {
       event({ title: "T", body: "B", labels: [{ name: "a" }, { name: "b" }], user: { type: "User" } }),
     );
     assert.deepEqual(parsed, { title: "T", body: "B", labels: ["a", "b"], bot: false });
+  });
+
+  it("reads the head branch", () => {
+    assert.equal(parsePullRequestEvent(event({ title: "T", head: { ref: "fix/1-x" } })).branch, "fix/1-x");
+    assert.equal("branch" in parsePullRequestEvent(event({ title: "T", head: null })), false);
   });
 
   it("treats a Bot user as a bot", () => {

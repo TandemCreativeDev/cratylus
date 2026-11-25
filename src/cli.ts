@@ -22,7 +22,7 @@ Commands:
   name --type <t> [--ticket <id>] --title <text>
                              Print the branch name for a piece of work (date: today)
   refs [file]                Print the ticket ids referenced in the text (default: stdin), one per line
-  pr [--title <t>] [--body-file <f>] [--label <l>]... [--bot] [--event <file>]
+  pr [--title <t>] [--body-file <f>] [--label <l>]... [--bot] [--branch <b>] [--event <file>]
                              Check a pull request names a ticket. Exit 1 if not
                              With no --title, --body-file or --event, reads the GitHub event
                              payload at $GITHUB_EVENT_PATH when there is one; --label and --bot
@@ -103,7 +103,7 @@ function describe(check: PullRequestCheck, config: Config): string {
 }
 
 function pr(
-  flags: { title?: string; bodyFile?: string; labels: string[]; bot: boolean; event?: string },
+  flags: { title?: string; bodyFile?: string; labels: string[]; bot: boolean; branch?: string; event?: string },
   config: Config,
   json: boolean,
 ): number {
@@ -120,6 +120,7 @@ function pr(
       body: flags.bodyFile === undefined ? base.body : fs.readFileSync(flags.bodyFile, "utf8"),
       labels: [...base.labels, ...flags.labels],
       bot: base.bot || flags.bot,
+      branch: flags.branch ?? base.branch,
     },
     config,
   );
@@ -141,6 +142,7 @@ function run(): number {
       "body-file": { type: "string" },
       label: { type: "string", multiple: true },
       bot: { type: "boolean" },
+      branch: { type: "string" },
       event: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
@@ -169,7 +171,14 @@ function run(): number {
       return refs(args[0], config, json);
     case "pr":
       return pr(
-        { title: values.title, bodyFile: values["body-file"], labels: values.label ?? [], bot: values.bot ?? false, event: values.event },
+        {
+          title: values.title,
+          bodyFile: values["body-file"],
+          labels: values.label ?? [],
+          bot: values.bot ?? false,
+          branch: values.branch,
+          event: values.event,
+        },
         config,
         json,
       );

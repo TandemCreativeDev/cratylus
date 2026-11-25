@@ -20,6 +20,8 @@ export interface Config {
   noTicketLabel: string;
   /** Globs for branch names that pass the branch check unexamined. */
   ignore: string[];
+  /** Whether a pull request must reference the ticket its branch names. */
+  matchBranchTicket: boolean;
 }
 
 export const CONFIG_FILE = "cratylus.config.json";
@@ -31,6 +33,7 @@ export const DEFAULTS: Config = {
   ticketRequired: ["feat", "fix", "refactor", "perf"],
   noTicketLabel: "no-ticket",
   ignore: [],
+  matchBranchTicket: false,
 };
 
 const TYPE_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -74,6 +77,7 @@ export function resolveConfig(raw: unknown, file: string = CONFIG_FILE): Config 
     if (raw[key] !== undefined && (typeof raw[key] !== "string" || !raw[key])) fail(`${key} must be a non-empty string`);
   for (const key of ["keywords", "types", "ticketRequired", "ignore"] as const)
     if (raw[key] !== undefined && !isStringArray(raw[key])) fail(`${key} must be an array of strings`);
+  if (raw.matchBranchTicket !== undefined && typeof raw.matchBranchTicket !== "boolean") fail("matchBranchTicket must be true or false");
 
   const { $schema: _schema, ...options } = raw;
   const config: Config = { ...DEFAULTS, ...(options as Partial<Config>) };

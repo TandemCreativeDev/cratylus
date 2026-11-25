@@ -331,6 +331,24 @@ describe("pr with flags", () => {
   });
 });
 
+describe("pr with matchBranchTicket", () => {
+  const config = write("match.json", JSON.stringify({ matchBranchTicket: true }));
+  const body = write("closes-5.md", "Closes #5\n");
+
+  it("reads the branch from --branch", () => {
+    assert.equal(cratylus(["pr", "--title", "x", "--body-file", body, "--branch", "fix/5-x", "-c", config]).status, 0);
+    const { status, stderr } = cratylus(["pr", "--title", "x", "--body-file", body, "--branch", "fix/6-x", "-c", config]);
+    assert.equal(status, 1);
+    assert.match(stderr, /^cratylus: The branch names ticket 6, but this pull request references only 5/);
+  });
+
+  it("reads the branch from the payload's head ref, and lets --branch replace it", () => {
+    const file = write("head.json", JSON.stringify({ pull_request: { title: "x", body: "Closes #5", head: { ref: "fix/6-x" } } }));
+    assert.equal(cratylus(["pr", "--event", file, "-c", config]).status, 1);
+    assert.equal(cratylus(["pr", "--event", file, "--branch", "fix/5-x", "-c", config]).status, 0);
+  });
+});
+
 describe("pr with an event payload", () => {
   it("reads the file named by --event", () => {
     const { status, stdout } = cratylus(["pr", "--event", EVENT]);
